@@ -1,6 +1,7 @@
 #include "Matrix.h"
 
 #include <sstream>
+#include <algorithm>
 
 Matrix::Matrix(std::vector<std::vector<double>> elements)
 {
@@ -15,6 +16,11 @@ Matrix::~Matrix()
 int Matrix::GetNumberOfElements()
 {
 	return this->numberOfElements;
+}
+
+int Matrix::GetSquareMatrixDimension()
+{
+	return std::min(this->rowDimension, this->columnDimension);
 }
 
 std::string Matrix::ToString()

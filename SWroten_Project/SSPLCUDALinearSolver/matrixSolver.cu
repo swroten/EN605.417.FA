@@ -177,7 +177,7 @@ __global__ void ludecomposition(int *pivotMatrix,
 	__syncthreads();
 
 	// Get Max of Column Values
-	max << <1, squareMatrixDimension >> >(maxValueIndexMatrix, columnValues, columnIndexInMatrix, numberOfElements);
+	//max << <1, squareMatrixDimension >> >(maxValueIndexMatrix, columnValues, columnIndexInMatrix, numberOfElements);
 
 	// Update Pivot Matrix Indices and Values
 	pivotMatrixCurrentColumnValue = pivotMatrix[columnIndexInMatrix];

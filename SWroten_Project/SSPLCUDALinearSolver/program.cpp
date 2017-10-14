@@ -20,7 +20,7 @@ int main()
 	double *cpuInvertedMatrixPntr = (double *)malloc(matrix.GetNumberOfElements() * sizeof(double));
 	
 	// Begin Inversion of Matrix
-	float timeToCompleteInMs = InvertMatrix(cpuInvertedMatrixPntr, cpuMatrixPntr, matrix.GetNumberOfElements());
+	float timeToCompleteInMs = InvertMatrix(cpuInvertedMatrixPntr, cpuMatrixPntr, matrix.GetNumberOfElements(), matrix.GetSquareMatrixDimension());
 
 	// Print out Matrix to Console
 	std::cout << "Result:" << endl;

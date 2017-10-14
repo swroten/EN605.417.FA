@@ -9,6 +9,7 @@ public:
 	Matrix(std::vector<std::vector<double>> elements);
 	~Matrix();
 	int GetNumberOfElements();
+	int GetSquareMatrixDimension();
 	std::string ToString();
 private:
 	int GetNumberOfElementsInMatrix(std::vector<std::vector<double>> matrix);

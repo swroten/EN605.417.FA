@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
-VisualStudioVersion = 14.0.24720.0
+VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SSPLCUDALinearSolver", "SSPLCUDALinearSolver\SSPLCUDALinearSolver.vcxproj", "{7CA10E53-49D7-46A3-867F-6A39F8C20610}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SWrotenModule07Assignment", "SWrotenModule07Assignment\SWrotenModule07Assignment.vcxproj", "{C26A9A9D-1CB8-4E2C-9980-35800D5BAB8A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{7CA10E53-49D7-46A3-867F-6A39F8C20610}.Debug|x64.Build.0 = Debug|x64
 		{7CA10E53-49D7-46A3-867F-6A39F8C20610}.Release|x64.ActiveCfg = Release|x64
 		{7CA10E53-49D7-46A3-867F-6A39F8C20610}.Release|x64.Build.0 = Release|x64
+		{C26A9A9D-1CB8-4E2C-9980-35800D5BAB8A}.Debug|x64.ActiveCfg = Debug|x64
+		{C26A9A9D-1CB8-4E2C-9980-35800D5BAB8A}.Debug|x64.Build.0 = Debug|x64
+		{C26A9A9D-1CB8-4E2C-9980-35800D5BAB8A}.Release|x64.ActiveCfg = Release|x64
+		{C26A9A9D-1CB8-4E2C-9980-35800D5BAB8A}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

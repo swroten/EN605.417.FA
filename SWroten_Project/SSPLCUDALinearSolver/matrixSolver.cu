@@ -2,11 +2,13 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
+#include <sstream>
 #include <stdio.h>
 #include <tchar.h>
 #include <cusolverSp.h>
 #include <cuda_runtime.h>
 #include <helper_cuda.h>
+#include "matrixSolver.h"
 
 #define BLOCKSIZE 512
 
@@ -156,12 +158,10 @@ float InvertMatrix(double *cpuInvertedMatrix,
 
 	// Need to do forward and reverse substitution to solve for inverse matrix
 	//  using the LU Decomposition matrix, Pivot matrix and solving for ones array.
-
-
-
-
-
-
+	
+	// Copy result of operation from GPU to CPU Memory
+	cudaMemcpy(cpuInvertedMatrix, gpuMatrix, numberOfElements * sizeof(double), cudaMemcpyDeviceToHost);
+	
 	// Check for any errors launching the kernel
 	error = cudaGetLastError();
 	if (error != cudaSuccess)

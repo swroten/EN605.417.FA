@@ -8,9 +8,13 @@ class Matrix
 public:
 	Matrix(std::vector<std::vector<double>> elements);
 	~Matrix();
+	double* GetMatrixElementsPointer();
+	double* GetInvertMatrixElementsPointer();
 	int GetNumberOfElements();
 	int GetSquareMatrixDimension();
+	std::vector<double> GetElements();
 	std::string ToString();
+	std::string InvertedMatrixToString();
 private:
 	int GetNumberOfElementsInMatrix(std::vector<std::vector<double>> matrix);
 	int rowDimension{ 0 };

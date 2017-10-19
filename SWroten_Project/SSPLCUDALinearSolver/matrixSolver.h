@@ -3,7 +3,8 @@
 void PrintDeviceProperties();
 
 float GetInvertedMatrixCPU(double *cpuInvertedMatrix,
-									int *cpuPivotMatrix,
+									const double *cpuLUMatrix,
+									const int *cpuPivotMatrix,
 									const int squareMatrixDimension);
 
 float GetLUDecompositionMatrixCPU(double *cpuInvertedMatrix,
@@ -13,7 +14,9 @@ float GetLUDecompositionMatrixCPU(double *cpuInvertedMatrix,
 											 const int squareMatrixDimension);
 
 float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
-									int *cpuPivotMatrix,
+									const double *cpuLUMatrix,
+									const int *cpuPivotMatrix,
+									const int numberOfElements,
 									const int squareMatrixDimension);
 
 float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,

@@ -4,6 +4,7 @@
 #include "device_launch_parameters.h"
 
 #include <sstream>
+#include <vector>
 #include <stdio.h>
 #include <tchar.h>
 #include <cusolverSp.h>
@@ -12,6 +13,23 @@
 #include "matrixSolver.h"
 
 using namespace std;
+
+void PrintDeviceProperties()
+{
+	// Initialize Variables
+	int device = 0;
+	cudaDeviceProp prop;
+
+	// Get Properties of this device
+	cudaGetDeviceProperties(&prop, device);
+
+	// Print Properties of this device
+	printf("\n");
+	printf("Device Number: %d\n", device);
+	printf("  Device name: %s\n", prop.name);
+	printf("  Warp Size: %i\n", prop.warpSize);
+	printf("  Max Threads Per Block: %i\n", prop.maxThreadsPerBlock);
+}
 
 // Function to retrieving time
 __host__ cudaEvent_t get_time(void)
@@ -146,6 +164,230 @@ __global__ void max(int *maxValueIndex,
 	}
 }
 
+__global__ void forward_sub(double *fowardSubstitutionArray,
+									 const double *matrix,
+									 const double *solveArray,
+									 const int *cpuPivotMatrix,
+									 const int squareMatrixDimension,
+									 const int currentRowIndex)
+{
+	// Initialize
+	extern __shared__ double lowerTriangleContributionToSumInSharedMemory[];
+
+	// Initialize Variables
+	const int numberOfThreads = blockDim.x;
+	const int currentThreadIndex = (blockIdx.x * blockDim.x) + threadIdx.x;
+	const double solveArrayValueFromPivotMatrixRowIndexCrossReference = solveArray[cpuPivotMatrix[currentRowIndex]];
+	const double currentValueForThisThread = ((currentThreadIndex < currentRowIndex) ? (matrix[(currentRowIndex * squareMatrixDimension) + currentThreadIndex] * fowardSubstitutionArray[currentThreadIndex]) : 0);
+
+	// Initialize Shared Data Array Values
+	lowerTriangleContributionToSumInSharedMemory[currentThreadIndex] = currentValueForThisThread;
+
+	// Sychronize all Threads
+	__syncthreads();
+
+	// Check if Block Size is greater than 512
+	if (numberOfThreads >= 512)
+	{
+		if (currentThreadIndex < 256)
+		{
+			// Update shared memory 
+			lowerTriangleContributionToSumInSharedMemory[currentThreadIndex]  += lowerTriangleContributionToSumInSharedMemory[currentThreadIndex + 256];
+		}
+
+		// Sychronize all Threads
+		__syncthreads();
+	}
+
+	if (numberOfThreads >= 256)
+	{
+		if (currentThreadIndex < 128)
+		{
+			// Update shared memory 
+			lowerTriangleContributionToSumInSharedMemory[currentThreadIndex] += lowerTriangleContributionToSumInSharedMemory[currentThreadIndex + 128];
+		}
+
+		// Sychronize all Threads
+		__syncthreads();
+	}
+
+	if (numberOfThreads >= 128)
+	{
+		if (currentThreadIndex < 64)
+		{
+			// Update shared memory 
+			lowerTriangleContributionToSumInSharedMemory[currentThreadIndex] += lowerTriangleContributionToSumInSharedMemory[currentThreadIndex + 64];
+		}
+
+		// Sychronize all Threads
+		__syncthreads();
+	}
+
+	if (currentThreadIndex < 32)
+	{
+		if (numberOfThreads >= 64)
+		{
+			// Update shared memory 
+			lowerTriangleContributionToSumInSharedMemory[currentThreadIndex] += lowerTriangleContributionToSumInSharedMemory[currentThreadIndex + 32];
+		}
+
+		if (numberOfThreads >= 32)
+		{
+			// Update shared memory 
+			lowerTriangleContributionToSumInSharedMemory[currentThreadIndex] += lowerTriangleContributionToSumInSharedMemory[currentThreadIndex + 16];
+		}
+
+		if (numberOfThreads >= 16)
+		{
+			// Update shared memory 
+			lowerTriangleContributionToSumInSharedMemory[currentThreadIndex] += lowerTriangleContributionToSumInSharedMemory[currentThreadIndex + 8];
+		}
+
+		if (numberOfThreads >= 8)
+		{
+			// Update shared memory 
+			lowerTriangleContributionToSumInSharedMemory[currentThreadIndex] += lowerTriangleContributionToSumInSharedMemory[currentThreadIndex + 4];
+		}
+
+		if (numberOfThreads >= 4)
+		{
+			// Update shared memory 
+			lowerTriangleContributionToSumInSharedMemory[currentThreadIndex] += lowerTriangleContributionToSumInSharedMemory[currentThreadIndex + 2];
+		}
+
+		if (numberOfThreads >= 2)
+		{
+			// Update shared memory 
+			lowerTriangleContributionToSumInSharedMemory[currentThreadIndex] += lowerTriangleContributionToSumInSharedMemory[currentThreadIndex + 1];
+		}
+	}
+
+	// if this is the thread that is in the column that corresponds to the current row, update the forward substitution array
+	if (currentThreadIndex == currentRowIndex)
+	{
+		fowardSubstitutionArray[currentRowIndex] = solveArrayValueFromPivotMatrixRowIndexCrossReference - lowerTriangleContributionToSumInSharedMemory[0];
+	}
+}
+
+__global__ void backward_sub(double *backwardSubstitutionArray,
+									  const double *fowardSubstitutionArray,
+									  const double *matrix,
+									  const double *solveArray,
+									  const int *cpuPivotMatrix,
+									  const int squareMatrixDimension,
+									  const int currentRowIndex)
+{
+	// Initialize
+	extern __shared__ double upperTriangleContributionToSumInSharedMemory[];
+
+	// Initialize Variables
+	const int numberOfThreads = blockDim.x;
+	const int currentThreadIndex = (blockIdx.x * blockDim.x) + threadIdx.x;
+	const double forwardSubArrayValue = fowardSubstitutionArray[currentRowIndex];
+	const double diagonalMatrixElementValue = matrix[(currentRowIndex * squareMatrixDimension) + currentRowIndex];
+	const double currentValueForThisThread = ((currentThreadIndex > currentRowIndex) ? (matrix[(currentRowIndex * squareMatrixDimension) + currentThreadIndex] * backwardSubstitutionArray[currentThreadIndex]) : 0);
+
+	// Initialize Shared Data Array Values
+	upperTriangleContributionToSumInSharedMemory[currentThreadIndex] = currentValueForThisThread;
+
+	// Sychronize all Threads
+	__syncthreads();
+
+	// Check if Block Size is greater than 512
+	if (numberOfThreads >= 512)
+	{
+		if (currentThreadIndex < 256)
+		{
+			// Update shared memory 
+			upperTriangleContributionToSumInSharedMemory[currentThreadIndex] += upperTriangleContributionToSumInSharedMemory[currentThreadIndex + 256];
+		}
+
+		// Sychronize all Threads
+		__syncthreads();
+	}
+
+	if (numberOfThreads >= 256)
+	{
+		if (currentThreadIndex < 128)
+		{
+			// Update shared memory 
+			upperTriangleContributionToSumInSharedMemory[currentThreadIndex] += upperTriangleContributionToSumInSharedMemory[currentThreadIndex + 128];
+		}
+
+		// Sychronize all Threads
+		__syncthreads();
+	}
+
+	if (numberOfThreads >= 128)
+	{
+		if (currentThreadIndex < 64)
+		{
+			// Update shared memory 
+			upperTriangleContributionToSumInSharedMemory[currentThreadIndex] += upperTriangleContributionToSumInSharedMemory[currentThreadIndex + 64];
+		}
+
+		// Sychronize all Threads
+		__syncthreads();
+	}
+
+	if (currentThreadIndex < 32)
+	{
+		if (numberOfThreads >= 64)
+		{
+			// Update shared memory 
+			upperTriangleContributionToSumInSharedMemory[currentThreadIndex] += upperTriangleContributionToSumInSharedMemory[currentThreadIndex + 32];
+		}
+
+		if (numberOfThreads >= 32)
+		{
+			// Update shared memory 
+			upperTriangleContributionToSumInSharedMemory[currentThreadIndex] += upperTriangleContributionToSumInSharedMemory[currentThreadIndex + 16];
+		}
+
+		if (numberOfThreads >= 16)
+		{
+			// Update shared memory 
+			upperTriangleContributionToSumInSharedMemory[currentThreadIndex] += upperTriangleContributionToSumInSharedMemory[currentThreadIndex + 8];
+		}
+
+		if (numberOfThreads >= 8)
+		{
+			// Update shared memory 
+			upperTriangleContributionToSumInSharedMemory[currentThreadIndex] += upperTriangleContributionToSumInSharedMemory[currentThreadIndex + 4];
+		}
+
+		if (numberOfThreads >= 4)
+		{
+			// Update shared memory 
+			upperTriangleContributionToSumInSharedMemory[currentThreadIndex] += upperTriangleContributionToSumInSharedMemory[currentThreadIndex + 2];
+		}
+
+		if (numberOfThreads >= 2)
+		{
+			// Update shared memory 
+			upperTriangleContributionToSumInSharedMemory[currentThreadIndex] += upperTriangleContributionToSumInSharedMemory[currentThreadIndex + 1];
+		}
+	}
+
+	// if this is the thread that is in the column that corresponds to the current row, update the forward substitution array
+	if (currentThreadIndex == currentRowIndex)
+	{
+		backwardSubstitutionArray[currentRowIndex] = ((forwardSubArrayValue - upperTriangleContributionToSumInSharedMemory[0]) / diagonalMatrixElementValue);
+	}
+}
+
+__global__ void solve(double *matrix,
+							 const double *backwardSubstitutionArray,
+							 const int squareMatrixDimension,
+							 const int currentRowIndex)
+{
+	// Initialize Variables
+	const int currentThreadIndex = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	// Update Inverse Matrix
+	matrix[(currentThreadIndex * squareMatrixDimension) + currentRowIndex] = backwardSubstitutionArray[currentThreadIndex];
+}
+
 __global__ void shur_complement(double *matrix, 
 										  const int currentColumnInMatrix,
 										  const int squareMatrixDimension)
@@ -187,9 +429,9 @@ __global__ void shur_complement(double *matrix,
 	matrix[threadIndexWithinEntireMatrix] = matrixInSharedMemory[threadIndexWithinEntireMatrix];
 }
 
-__global__ void shur_complement_works(double *matrix,
-												  const int currentColumnInMatrix,
-												  const int squareMatrixDimension)
+__global__ void shur_complement_mod(double *matrix,
+												const int currentColumnInMatrix,
+												const int squareMatrixDimension)
 {
 	// Get Constant Values
 	const double diagonalMatrixValue = matrix[(currentColumnInMatrix * squareMatrixDimension) + currentColumnInMatrix];
@@ -217,149 +459,33 @@ __global__ void shur_complement_works(double *matrix,
 
 }
 
-__global__ void ludecomposition(int *pivotMatrix,
-	double *matrix,
-	const int numberOfElements,
-	const int squareMatrixDimension)
-{
-	// Get Thread Index of Element
-	const int columnIndexInMatrix = (blockIdx.x * blockDim.x) + threadIdx.x;
-
-	// Create Shared Memory Array
-	extern volatile __shared__ int maxColumnIndices[];
-
-	// Exit if thread index is greater than number of elements
-	if (columnIndexInMatrix >= numberOfElements) { return; }
-
-	// Initialize Column Values in context of this column
-	double largestValue = 0;
-	double matrixCurrentColumnValue = 0;
-	double matrixLargestColumnValue = 0;
-	int pivotMatrixCurrentColumnValue = 0;
-	int pivotMatrixLargestColumnValue = 0;
-
-	// Initialize Pivot Matrix Value
-	pivotMatrix[columnIndexInMatrix] = columnIndexInMatrix;
-
-	// Get all row elements in current column 
-	for (int rowIndex = columnIndexInMatrix; rowIndex < squareMatrixDimension; rowIndex++)
-	{			
-		// Get Max Row Value in Column
-		if (abs(matrix[(rowIndex * squareMatrixDimension) + columnIndexInMatrix]) > largestValue)
-		{
-			largestValue = abs(matrix[(rowIndex * squareMatrixDimension) + columnIndexInMatrix]);
-			maxColumnIndices[columnIndexInMatrix] = rowIndex;
-		}
-	}
-
-	// Singular Matrix
-	if (largestValue == 0) 
-	{ 
-		// Stop all Threads and kill Kernel
-		__threadfence();
-		asm("trap;");
-	}
-	
-	// Update Pivot Matrix Indices and Values
-	pivotMatrixCurrentColumnValue = pivotMatrix[columnIndexInMatrix];
-	pivotMatrixLargestColumnValue = pivotMatrix[maxColumnIndices[columnIndexInMatrix]];
-	pivotMatrix[columnIndexInMatrix] = pivotMatrixLargestColumnValue;
-	pivotMatrix[maxColumnIndices[columnIndexInMatrix]] = pivotMatrixCurrentColumnValue;
-
-	// Each Column Will Exchange Current Column Row Element with Pivot Element
-	matrixCurrentColumnValue = matrix[(columnIndexInMatrix * squareMatrixDimension) + columnIndexInMatrix];
-	matrixLargestColumnValue = matrix[(maxColumnIndices[columnIndexInMatrix] * squareMatrixDimension) + columnIndexInMatrix];
-	matrix[(columnIndexInMatrix * squareMatrixDimension) + columnIndexInMatrix] = matrixLargestColumnValue;
-	matrix[(maxColumnIndices[columnIndexInMatrix] * squareMatrixDimension) + columnIndexInMatrix] = matrixCurrentColumnValue;
-
-	// Schur Complement
-	for (int rowIndex = columnIndexInMatrix + 1; rowIndex < squareMatrixDimension; rowIndex++)
-	{
-		// Divide each row element below diagonal of current column by diagonal element for current column
-		matrix[(rowIndex * squareMatrixDimension) + columnIndexInMatrix] = matrix[(rowIndex * squareMatrixDimension) + columnIndexInMatrix] /
-			matrix[(columnIndexInMatrix * squareMatrixDimension) + columnIndexInMatrix];
-
-		// Sync Threads
-		__syncthreads();
-
-		if (columnIndexInMatrix != 0)
-		{
-			// Subtract each row element below diagonal of current column by product of diagonal element and current row element
-			matrix[(rowIndex * squareMatrixDimension) + columnIndexInMatrix] = matrix[(rowIndex * squareMatrixDimension) + columnIndexInMatrix] -
-				(matrix[(rowIndex * squareMatrixDimension) + columnIndexInMatrix] * matrix[(columnIndexInMatrix * squareMatrixDimension) + columnIndexInMatrix]);
-		}
-
-		// Sync Threads
-		__syncthreads();
-	}
-
-	// Sync Threads
-	__syncthreads();
-}
-
-void PrintDeviceProperties()
-{
-	// Initialize Variables
-	int device = 0;
-	cudaDeviceProp prop;
-
-	// Get Properties of this device
-	cudaGetDeviceProperties(&prop, device);
-
-	// Print Properties of this device
-	printf("\n");
-	printf("Device Number: %d\n", device);
-	printf("  Device name: %s\n", prop.name);
-	printf("  Warp Size: %i\n", prop.warpSize);
-	printf("  Max Threads Per Block: %i\n", prop.maxThreadsPerBlock);
-}
-
-
 float GetInvertedMatrixCPU(double *cpuInvertedMatrix,
-									int *cpuPivotMatrix,
+									const double *cpuLUMatrix,
+									const int *cpuPivotMatrix,
 									const int squareMatrixDimension)
 {
 	// Initialize Variables
 	cudaEvent_t stop;
 	cudaEvent_t start;
-	double elementValue = 0.0;
 	double sumLowerTriangle = 0;
 	double sumUpperTriangle = 0;
 	float timeToCompleteInMs = 0;
-	double *solveArray = (double *)malloc(squareMatrixDimension * sizeof(double));
-	double *fowardSubstitutionArray = (double *)malloc(squareMatrixDimension * sizeof(double));
-	double *backwardSubtitutionArray = (double *)malloc(squareMatrixDimension * sizeof(double));
+	vector<double> solveArray(squareMatrixDimension, 0.0);
+	vector<double> fowardSubstitutionArray(squareMatrixDimension, 0.0);
+	vector<double> backwardSubtitutionArray(squareMatrixDimension, 0.0);
 
 	// Keep Track of Start Time
 	start = get_time();
-
-	// for each column in matrix
-	for (int columnIndexInMatrix = 0; columnIndexInMatrix < squareMatrixDimension; columnIndexInMatrix++)
-	{
-		// Initialize Forward and Backward Substition Array
-		fowardSubstitutionArray[columnIndexInMatrix] = 0.0;
-		backwardSubtitutionArray[columnIndexInMatrix] = 0.0;
-	}
 
 	// Solve for the Identity Matrix using resuls of LU Decomposition
 	//  Step through each row and solve
 	for (int overallRowIndex = 0; overallRowIndex < squareMatrixDimension; overallRowIndex++)
 	{
-		// Initialize Solve Array to be all 0 except for diagonal for 
-		for (int columnIndexInMatrix = 0; columnIndexInMatrix < squareMatrixDimension; columnIndexInMatrix++)
-		{
-			// If Diagonal
-			if (columnIndexInMatrix == overallRowIndex)
-			{
-				// Set to Identity
-				solveArray[columnIndexInMatrix] = 1;
-			}
-			else
-			{
-				// Otherwise set to 0
-				solveArray[columnIndexInMatrix] = 0;
-			}
-		}
+		// Initialize
+		solveArray = vector<double>(squareMatrixDimension, 0.0);
+
+		// Set to Identity
+		solveArray[overallRowIndex] = 1;
 
 		// Solve by doing foward substition
 		for (int rowIndex = 0; rowIndex < squareMatrixDimension; rowIndex++)
@@ -368,22 +494,10 @@ float GetInvertedMatrixCPU(double *cpuInvertedMatrix,
 			sumLowerTriangle = 0;
 
 			// Step through Each Column
-			for (int columnIndex = 0; columnIndex < squareMatrixDimension; columnIndex++)
+			for (int columnIndex = 0; columnIndex < rowIndex; columnIndex++)
 			{
-				// Get if this is the Diaganol
-				if (rowIndex == columnIndex)
-				{
-					// Set to Identity if it is
-					elementValue = 1.0;
-				}
-				else
-				{
-					// Get LU Matrix Value if not
-					elementValue = cpuInvertedMatrix[(rowIndex * squareMatrixDimension) + columnIndex];
-				}
-
 				// Accumulate Lower Triangle Sum
-				sumLowerTriangle += (elementValue * fowardSubstitutionArray[columnIndex]);
+				sumLowerTriangle += (cpuLUMatrix[(rowIndex * squareMatrixDimension) + columnIndex] * fowardSubstitutionArray[columnIndex]);
 			}
 
 			// Perform Foward Substituition using Pivot Array and Accumulating Lower Triangle Sum
@@ -399,12 +513,11 @@ float GetInvertedMatrixCPU(double *cpuInvertedMatrix,
 			// Step through Each Column
 			for (int columnIndex = rowIndex + 1; columnIndex < squareMatrixDimension; columnIndex++)
 			{
-				sumUpperTriangle += (cpuInvertedMatrix[(rowIndex * squareMatrixDimension) + columnIndex] *
-					backwardSubtitutionArray[columnIndex]);
+				sumUpperTriangle += (cpuLUMatrix[(rowIndex * squareMatrixDimension) + columnIndex] * backwardSubtitutionArray[columnIndex]);
 			}
 
 			backwardSubtitutionArray[rowIndex] = ((fowardSubstitutionArray[rowIndex] - sumUpperTriangle) /
-				cpuInvertedMatrix[(rowIndex * squareMatrixDimension) + rowIndex]);
+				cpuLUMatrix[(rowIndex * squareMatrixDimension) + rowIndex]);
 		}
 
 		// Perform final update to get Inverted Matrix
@@ -414,7 +527,7 @@ float GetInvertedMatrixCPU(double *cpuInvertedMatrix,
 			cpuInvertedMatrix[(overallColumnIndex * squareMatrixDimension) + overallRowIndex] = backwardSubtitutionArray[overallColumnIndex];
 		}
 	}
-	
+
 	// Keep Track of Stop Time 
 	stop = get_time();
 
@@ -508,10 +621,260 @@ float GetLUDecompositionMatrixCPU(double *cpuInvertedMatrix,
 }
 
 float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
-									int *cpuPivotMatrix,
+									const double *cpuLUMatrix,
+									const int *cpuPivotMatrix,
+									const int numberOfElements,
 									const int squareMatrixDimension)
 {
-	return 0;
+	// Initialize Variables
+	int device = 0;
+	cudaEvent_t stop;
+	cudaError_t error;
+	cudaEvent_t start;
+	int numberOfBlocks;
+	int numberOfThreads;
+	cudaDeviceProp prop;
+	vector<double> doubles;
+	int maxThreadsPerBlock;
+	int *gpuPivotMatrix = 0;
+	double *gpuLUMatrix = 0;
+	double *gpuSolveArray = 0;
+	float timeToCompleteInMs = 0;
+	double *gpuInvertedMatrix = 0;
+	double *gpuForwardSubstitutionArray = 0;
+	double *gpuBackwardSubstitutionArray = 0;
+	vector<double> fowardSubstitutionVector(squareMatrixDimension, 0.0);
+	vector<double> backwardSubtitutionVector(squareMatrixDimension, 0.0);
+	const int numberOfBytesInMatrix = numberOfElements * sizeof(double);
+	const int numberOfBytesInArray = squareMatrixDimension * sizeof(int);
+	double *cpuSolveArray = (double *)malloc(squareMatrixDimension * sizeof(double));
+	double *cpuForwardSubstitutionArray = (double *)malloc(squareMatrixDimension * sizeof(double));
+	double *cpuBackwardSubstitutionArray = (double *)malloc(squareMatrixDimension * sizeof(double));
+	
+	// Get Properties of this device
+	cudaGetDeviceProperties(&prop, device);
+
+	// Get Max Threads Per Block
+	maxThreadsPerBlock = prop.maxThreadsPerBlock;
+
+	// Verify that Machine has GPU Installed by 
+	//  selecting first GPU available.
+	if (cudaSetDevice(0) != cudaSuccess)
+	{
+		// Print error regarding inability to select CUDA GPU Device
+		fprintf(stderr, "Error: Failed to select CUDA capable GPU device!");
+
+		// exit before executing any further
+		return 0;
+	}
+
+	// Allocate GPU Memory for input matrix
+	if (cudaMalloc((void**)&gpuLUMatrix, numberOfBytesInMatrix) != cudaSuccess)
+	{
+		// Print error regarding inability to allocate GPU Device Memory
+		fprintf(stderr, "Error: Failed to allocate memory on CUDA capable GPU device!");
+
+		// exit before executing any further
+		return 0;
+	}
+
+	// Allocate GPU Memory for input GPU Inverted
+	if (cudaMalloc((void**)&gpuInvertedMatrix, numberOfBytesInMatrix) != cudaSuccess)
+	{
+		// Print error regarding inability to allocate GPU Device Memory
+		fprintf(stderr, "Error: Failed to allocate memory on CUDA capable GPU device!");
+
+		// exit before executing any further
+		return 0;
+	}
+
+
+	// Allocate GPU Memory for input Pivot Matrix
+	if (cudaMalloc((void**)&gpuPivotMatrix, numberOfBytesInArray) != cudaSuccess)
+	{
+		// Print error regarding inability to allocate GPU Device Memory
+		fprintf(stderr, "Error: Failed to allocate memory on CUDA capable GPU device!");
+
+		// exit before executing any further
+		return 0;
+	}
+
+	// Allocate GPU Memory for input Solve Array
+	if (cudaMalloc((void**)&gpuSolveArray, squareMatrixDimension * sizeof(double)) != cudaSuccess)
+	{
+		// Print error regarding inability to allocate GPU Device Memory
+		fprintf(stderr, "Error: Failed to allocate memory on CUDA capable GPU device!");
+
+		// exit before executing any further
+		return 0;
+	}
+
+	// Allocate GPU Memory for input Forward Sub Array
+	if (cudaMalloc((void**)&gpuForwardSubstitutionArray, squareMatrixDimension * sizeof(double)) != cudaSuccess)
+	{
+		// Print error regarding inability to allocate GPU Device Memory
+		fprintf(stderr, "Error: Failed to allocate memory on CUDA capable GPU device!");
+
+		// exit before executing any further
+		return 0;
+	}
+
+	// Allocate GPU Memory for input Backward Sub Array
+	if (cudaMalloc((void**)&gpuBackwardSubstitutionArray, squareMatrixDimension * sizeof(double)) != cudaSuccess)
+	{
+		// Print error regarding inability to allocate GPU Device Memory
+		fprintf(stderr, "Error: Failed to allocate memory on CUDA capable GPU device!");
+
+		// exit before executing any further
+		return 0;
+	}
+
+	// Get Number of Blocks Required and Number of Threads
+	numberOfBlocks = (int)(squareMatrixDimension / maxThreadsPerBlock) + 1;      // Offset of 1, not 0
+	numberOfThreads = max((int)(squareMatrixDimension % maxThreadsPerBlock), 1); // Ensure at Least 1 Thread when executing
+
+	// Keep Track of Start Time
+	start = get_time();
+
+	// Initialize to 0 values
+	for (int index = 0; index < squareMatrixDimension; index++)
+	{
+		// Set to Identity
+		cpuForwardSubstitutionArray[index] = 0.0;
+		cpuBackwardSubstitutionArray[index] = 0.0;
+	}
+
+	// Copy CPU Array to GPU Array
+	cudaMemcpy(gpuLUMatrix, cpuLUMatrix, numberOfBytesInMatrix, cudaMemcpyHostToDevice);
+	cudaMemcpy(gpuPivotMatrix, cpuPivotMatrix, numberOfBytesInArray, cudaMemcpyHostToDevice);
+	cudaMemcpy(gpuForwardSubstitutionArray, cpuForwardSubstitutionArray, squareMatrixDimension * sizeof(double), cudaMemcpyHostToDevice);
+	cudaMemcpy(gpuBackwardSubstitutionArray, cpuBackwardSubstitutionArray, squareMatrixDimension * sizeof(double), cudaMemcpyHostToDevice);
+
+	// Solve for the Identity Matrix using resuls of LU Decomposition
+	//  Step through each row and solve
+	for (int overallRowIndex = 0; overallRowIndex < squareMatrixDimension; overallRowIndex++)
+	{
+		// Initialize
+		for (int index = 0; index < squareMatrixDimension; index++)
+		{
+			// Set to Identity
+			cpuSolveArray[index] = ((index != overallRowIndex) ? 0 : 1);
+		}
+		
+		// Copy Matrix Data From CPU Memory to GPU Memory
+		cudaMemcpy(gpuSolveArray, cpuSolveArray, squareMatrixDimension * sizeof(double), cudaMemcpyHostToDevice);
+
+		// Solve by doing foward substition
+		for (int rowIndex = 0; rowIndex < squareMatrixDimension; rowIndex++)
+		{
+			// Launch a Forward Substitution Kernel for each Column in this row
+			forward_sub<<<numberOfBlocks, numberOfThreads, numberOfThreads * sizeof(double)>>>(gpuForwardSubstitutionArray, 
+																														  gpuLUMatrix,
+																														  gpuSolveArray,
+																														  gpuPivotMatrix,
+																														  squareMatrixDimension,
+																														  rowIndex);
+
+			// Check for any errors launching the kernel
+			error = cudaGetLastError();
+			if (error != cudaSuccess)
+			{
+				// Print error regarding failure during kernel launch
+				fprintf(stderr, "Error: Failed to complete Matrix Inversion kernel because '%s'!\n", cudaGetErrorString(error));
+
+				// exit before executing any further
+				return 0;
+			}
+
+			// Wait for launched Matrix Inversion kernel to finish
+			//  and log error if any occurred.
+			error = cudaDeviceSynchronize();
+			if (error != cudaSuccess)
+			{
+				fprintf(stderr, "Error: Device Sync returned error code %d after Matrix Inversion Kernel had been successfully launched!\n", error);
+
+				// exit before executing any further
+				return 0;
+			}
+		}
+
+		// Solve by doing backward substition
+		for (int rowIndex = squareMatrixDimension - 1; rowIndex >= 0; rowIndex--)
+		{
+			// Launch a Backward Substitution Kernel for each Column in this row
+			backward_sub<<<numberOfBlocks, numberOfThreads, numberOfThreads * sizeof(double)>>>(gpuBackwardSubstitutionArray,
+																															gpuForwardSubstitutionArray,
+																															gpuLUMatrix,
+																															gpuSolveArray,
+																															gpuPivotMatrix,
+																															squareMatrixDimension,
+																															rowIndex);
+
+			// Check for any errors launching the kernel
+			error = cudaGetLastError();
+			if (error != cudaSuccess)
+			{
+				// Print error regarding failure during kernel launch
+				fprintf(stderr, "Error: Failed to complete Matrix Inversion kernel because '%s'!\n", cudaGetErrorString(error));
+
+				// exit before executing any further
+				return 0;
+			}
+
+			// Wait for launched Matrix Inversion kernel to finish
+			//  and log error if any occurred.
+			error = cudaDeviceSynchronize();
+			if (error != cudaSuccess)
+			{
+				fprintf(stderr, "Error: Device Sync returned error code %d after Matrix Inversion Kernel had been successfully launched!\n", error);
+
+				// exit before executing any further
+				return 0;
+			}
+		}
+
+		// Launch Kernel for Final Solving of Inverted Matrix
+		solve<<<numberOfBlocks, numberOfThreads>>>(gpuInvertedMatrix, 
+																 gpuBackwardSubstitutionArray, 
+																 squareMatrixDimension, 
+																 overallRowIndex);
+
+		// Check for any errors launching the kernel
+		error = cudaGetLastError();
+		if (error != cudaSuccess)
+		{
+			// Print error regarding failure during kernel launch
+			fprintf(stderr, "Error: Failed to complete Matrix Inversion kernel because '%s'!\n", cudaGetErrorString(error));
+
+			// exit before executing any further
+			return 0;
+		}
+
+		// Wait for launched Matrix Inversion kernel to finish
+		//  and log error if any occurred.
+		error = cudaDeviceSynchronize();
+		if (error != cudaSuccess)
+		{
+			fprintf(stderr, "Error: Device Sync returned error code %d after Matrix Inversion Kernel had been successfully launched!\n", error);
+
+			// exit before executing any further
+			return 0;
+		}
+		
+		// Copy Matrix Data From CPU Memory to GPU Memory
+		cudaMemcpy(cpuInvertedMatrix, gpuInvertedMatrix, numberOfBytesInMatrix, cudaMemcpyDeviceToHost);
+	}
+
+	// Keep Track of Stop Time 
+	stop = get_time();
+
+	// Synchronize Events
+	timeToCompleteInMs = 0;
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&timeToCompleteInMs, start, stop);
+
+	// Return time required to complete
+	return timeToCompleteInMs;
 }
 
 float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
@@ -528,17 +891,18 @@ float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
 	cudaDeviceProp prop;
 	int maxValueIndex = 0;
 	int maxThreadsPerBlock;
+	double *gpuLUMatrix = 0;
 	int *gpuPivotMatrix = 0;
 	double largestValue = 0.0;
 	int *gpuMaxValueIndex = 0;
 	float timeToCompleteInMs = 0;
-	double *gpuInvertedMatrix = 0;
 	double matrixCurrentColumnValue = 0;
 	double matrixLargestColumnValue = 0;
 	int pivotMatrixCurrentColumnValue = 0;
 	int pivotMatrixLargestColumnValue = 0;
 	int *cpuMaxValueIndex = (int *)malloc(sizeof(int));
 	const int numberOfBytesInMatrix = numberOfElements * sizeof(double);
+	const int numberOfBytesInArray = squareMatrixDimension * sizeof(int);
 
 	// Copy Initial Matrix into Inverted Matrix
 	cudaMemcpy(cpuInvertedMatrix, cpuMatrix, numberOfBytesInMatrix, cudaMemcpyHostToHost);
@@ -561,7 +925,7 @@ float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
 	}
 	
 	// Allocate GPU Memory for input matrix
-	if (cudaMalloc((void**)&gpuInvertedMatrix, numberOfBytesInMatrix) != cudaSuccess)
+	if (cudaMalloc((void**)&gpuLUMatrix, numberOfBytesInMatrix) != cudaSuccess)
 	{
 		// Print error regarding inability to allocate GPU Device Memory
 		fprintf(stderr, "Error: Failed to allocate memory on CUDA capable GPU device!");
@@ -581,7 +945,7 @@ float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
 	}
 	
 	// Allocate GPU Memory for input Pivot Matrix
-	if (cudaMalloc((void**)&gpuPivotMatrix, squareMatrixDimension * sizeof(int)) != cudaSuccess)
+	if (cudaMalloc((void**)&gpuPivotMatrix, numberOfBytesInArray) != cudaSuccess)
 	{
 		// Print error regarding inability to allocate GPU Device Memory
 		fprintf(stderr, "Error: Failed to allocate memory on CUDA capable GPU device!");
@@ -634,17 +998,17 @@ float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
 		}
 
 		// Copy Matrix Data From CPU Memory to GPU Memory
-		cudaMemcpy(gpuInvertedMatrix, cpuInvertedMatrix, numberOfBytesInMatrix, cudaMemcpyHostToDevice);
+		cudaMemcpy(gpuLUMatrix, cpuInvertedMatrix, numberOfBytesInMatrix, cudaMemcpyHostToDevice);
 
 		// Get Number of Threads Required for Shurs Complement
-		int numberOfBlocks = max((int)(numberOfElements / maxThreadsPerBlock), 1);
-		int numberOfThreads = max((int)(numberOfElements % maxThreadsPerBlock), 1);
+		int numberOfBlocks = (int)(numberOfElements / maxThreadsPerBlock) + 1;      // Offset of 1, not 0
+		int numberOfThreads = max((int)(numberOfElements % maxThreadsPerBlock), 1); // Ensure at Least 1 Thread when executing
 
 		// Perform Shur Complement
-		shur_complement<<<numberOfBlocks, numberOfThreads, numberOfBytesInMatrix>>>(gpuInvertedMatrix, columnIndexInMatrix, squareMatrixDimension);
+		shur_complement<<<numberOfBlocks, numberOfThreads, numberOfBytesInMatrix>>>(gpuLUMatrix, columnIndexInMatrix, squareMatrixDimension);
 
 		// Copy result of operation from GPU to CPU Memory
-		cudaMemcpy(cpuInvertedMatrix, gpuInvertedMatrix, numberOfBytesInMatrix, cudaMemcpyDeviceToHost);
+		cudaMemcpy(cpuInvertedMatrix, gpuLUMatrix, numberOfBytesInMatrix, cudaMemcpyDeviceToHost);
 
 
 		//// Get Number of Threads Required for Shurs Complement

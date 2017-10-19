@@ -119,7 +119,7 @@ void main(int argc, char *argv[])
 	std::string userInput{ "" };
 
 	// Perform Test 3-Elements
-	MatrixInversionTestForCPUvsGPU(3);
+	MatrixInversionTestForCPUvsGPU(31);
 
 	//// Perform Test for 5-Elements
 	//MatrixInversionTestForCPUvsGPU(5);

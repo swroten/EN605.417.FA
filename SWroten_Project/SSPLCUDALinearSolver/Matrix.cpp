@@ -52,17 +52,18 @@ void Matrix::InvertCPU()
 	}
 
 	// On the CPU - Perform LU Decomposition to get LU Matrix and Pivot Matrix - returns time required to complete in ms
-	timeToGetLUDecompositionMatrix = GetLUDecompositionMatrixCPU(this->cpuInvertedMatrixElementsPntr, 
+	timeToGetLUDecompositionMatrix = GetLUDecompositionMatrixCPU(this->cpuLUMatrixElementsPntr,
 																					 this->cpuPivotMatrixElementsPntr, 
 																					 this->cpuMatrixElementsPntr, 
 																					 this->numberOfElements, 
 																					 this->squareMatrixDimension);
 
 	// Build LU Decomposition Matrix As String
-	this->luMatrixAsString = GetMatrixAsString(this->cpuInvertedMatrixElementsPntr, this->squareMatrixDimension);
+	this->luMatrixAsString = GetMatrixAsString(this->cpuLUMatrixElementsPntr, this->squareMatrixDimension);
 
 	// On the CPU - Use the LU Matrix and Pivot Matrix to get Inverte Matrix - returns time required to complete in ms 
 	timeToInvertMatrixFromLUDecompositionAndPivotMatrix = GetInvertedMatrixCPU(this->cpuInvertedMatrixElementsPntr, 
+																										this->cpuLUMatrixElementsPntr,
 																										this->cpuPivotMatrixElementsPntr, 
 																										this->squareMatrixDimension);
 
@@ -103,18 +104,20 @@ void Matrix::InvertGPU()
 	}
 
 	// On the GPU - Perform LU Decomposition to get LU Matrix and Pivot Matrix - returns time required to complete in ms
-	timeToGetLUDecompositionMatrix = GetLUDecompositionMatrixGPU(this->cpuInvertedMatrixElementsPntr,
+	timeToGetLUDecompositionMatrix = GetLUDecompositionMatrixGPU(this->cpuLUMatrixElementsPntr,
 																					 this->cpuPivotMatrixElementsPntr,
 																					 this->cpuMatrixElementsPntr,
 																					 this->numberOfElements,
 																					 this->squareMatrixDimension);
 
 	// Build LU Decomposition Matrix As String
-	this->luMatrixAsString = GetMatrixAsString(this->cpuInvertedMatrixElementsPntr, this->squareMatrixDimension);
+	this->luMatrixAsString = GetMatrixAsString(this->cpuLUMatrixElementsPntr, this->squareMatrixDimension);
 
 	// On the CPU - Use the LU Matrix and Pivot Matrix to get Inverte Matrix - returns time required to complete in ms 
 	timeToInvertMatrixFromLUDecompositionAndPivotMatrix = GetInvertedMatrixGPU(this->cpuInvertedMatrixElementsPntr,
+																										this->cpuLUMatrixElementsPntr,
 																										this->cpuPivotMatrixElementsPntr,
+																										this->numberOfElements,
 																										this->squareMatrixDimension);
 
 	// Build Inverted Matrix As String

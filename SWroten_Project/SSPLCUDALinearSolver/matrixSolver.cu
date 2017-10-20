@@ -176,12 +176,20 @@ __global__ void forward_sub(double *fowardSubstitutionArray,
 
 	// Initialize Variables
 	const int numberOfThreads = blockDim.x;
+	const int numberOfElements = (squareMatrixDimension);
 	const int currentThreadIndex = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	// Default Shared Memory Value to 0
+	lowerTriangleContributionToSumInSharedMemory[currentThreadIndex] = 0;
+
+	// Exit if Thread out of bounds
+	if (currentThreadIndex > numberOfElements) { return; }
+
+	// Initialize Variables
 	const double solveArrayValueFromPivotMatrixRowIndexCrossReference = solveArray[cpuPivotMatrix[currentRowIndex]];
-	const double currentValueForThisThread = ((currentThreadIndex < currentRowIndex) ? (matrix[(currentRowIndex * squareMatrixDimension) + currentThreadIndex] * fowardSubstitutionArray[currentThreadIndex]) : 0);
 
 	// Initialize Shared Data Array Values
-	lowerTriangleContributionToSumInSharedMemory[currentThreadIndex] = currentValueForThisThread;
+	lowerTriangleContributionToSumInSharedMemory[currentThreadIndex] = ((currentThreadIndex < currentRowIndex) ? (matrix[(currentRowIndex * squareMatrixDimension) + currentThreadIndex] * fowardSubstitutionArray[currentThreadIndex]) : 0);
 
 	// Sychronize all Threads
 	__syncthreads();
@@ -272,8 +280,6 @@ __global__ void forward_sub(double *fowardSubstitutionArray,
 __global__ void backward_sub(double *backwardSubstitutionArray,
 									  const double *fowardSubstitutionArray,
 									  const double *matrix,
-									  const double *solveArray,
-									  const int *cpuPivotMatrix,
 									  const int squareMatrixDimension,
 									  const int currentRowIndex)
 {
@@ -282,13 +288,17 @@ __global__ void backward_sub(double *backwardSubstitutionArray,
 
 	// Initialize Variables
 	const int numberOfThreads = blockDim.x;
+	const int numberOfElements = (squareMatrixDimension);
 	const int currentThreadIndex = (blockIdx.x * blockDim.x) + threadIdx.x;
-	const double forwardSubArrayValue = fowardSubstitutionArray[currentRowIndex];
-	const double diagonalMatrixElementValue = matrix[(currentRowIndex * squareMatrixDimension) + currentRowIndex];
-	const double currentValueForThisThread = ((currentThreadIndex > currentRowIndex) ? (matrix[(currentRowIndex * squareMatrixDimension) + currentThreadIndex] * backwardSubstitutionArray[currentThreadIndex]) : 0);
 
+	// Default Shared Memory Value to 0
+	upperTriangleContributionToSumInSharedMemory[currentThreadIndex] = 0;
+
+	// Exit if Thread out of bounds
+	if (currentThreadIndex > numberOfElements) { return; }
+	
 	// Initialize Shared Data Array Values
-	upperTriangleContributionToSumInSharedMemory[currentThreadIndex] = currentValueForThisThread;
+	upperTriangleContributionToSumInSharedMemory[currentThreadIndex] = ((currentThreadIndex > currentRowIndex) ? (matrix[(currentRowIndex * squareMatrixDimension) + currentThreadIndex] * backwardSubstitutionArray[currentThreadIndex]) : 0);
 
 	// Sychronize all Threads
 	__syncthreads();
@@ -370,9 +380,9 @@ __global__ void backward_sub(double *backwardSubstitutionArray,
 	}
 
 	// if this is the thread that is in the column that corresponds to the current row, update the forward substitution array
-	if (currentThreadIndex == currentRowIndex)
+	if (currentThreadIndex == 0)
 	{
-		backwardSubstitutionArray[currentRowIndex] = ((forwardSubArrayValue - upperTriangleContributionToSumInSharedMemory[0]) / diagonalMatrixElementValue);
+		backwardSubstitutionArray[currentRowIndex] = ((fowardSubstitutionArray[currentRowIndex] - upperTriangleContributionToSumInSharedMemory[0]) / matrix[(currentRowIndex * squareMatrixDimension) + currentRowIndex]);
 	}
 }
 
@@ -383,6 +393,10 @@ __global__ void solve(double *matrix,
 {
 	// Initialize Variables
 	const int currentThreadIndex = (blockIdx.x * blockDim.x) + threadIdx.x;
+	const int numberOfElements = (squareMatrixDimension);
+
+	// Exit if Thread out of bounds
+	if (currentThreadIndex > numberOfElements) { return; }
 
 	// Update Inverse Matrix
 	matrix[(currentThreadIndex * squareMatrixDimension) + currentRowIndex] = backwardSubstitutionArray[currentThreadIndex];
@@ -396,7 +410,13 @@ __global__ void shur_complement(double *matrix,
 	extern __shared__ double matrixInSharedMemory[];
 
 	// Initialize Variables
+	const int numberOfElements = (squareMatrixDimension * squareMatrixDimension);
 	const int threadIndexWithinEntireMatrix = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	// Exit if Thread out of bounds
+	if (threadIndexWithinEntireMatrix > numberOfElements) { return; }
+
+	// Initialize Variables
 	const int threadIndexWithinEntireMatrixAsRowIndex = (threadIndexWithinEntireMatrix / squareMatrixDimension);
 	const int threadIndexWithinEntireMatrixColumnIndex = (threadIndexWithinEntireMatrix % squareMatrixDimension);
 	const bool isADivisionColumn = (currentColumnInMatrix == threadIndexWithinEntireMatrixColumnIndex);
@@ -731,7 +751,7 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 
 	// Get Number of Blocks Required and Number of Threads
 	numberOfBlocks = (int)(squareMatrixDimension / maxThreadsPerBlock) + 1;      // Offset of 1, not 0
-	numberOfThreads = max((int)(squareMatrixDimension % maxThreadsPerBlock), 1); // Ensure at Least 1 Thread when executing
+	numberOfThreads = max((int)(squareMatrixDimension % maxThreadsPerBlock), 32); // Ensure at Least 32 Thread when executing
 
 	// Keep Track of Start Time
 	start = get_time();
@@ -768,42 +788,7 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 		for (int rowIndex = 0; rowIndex < squareMatrixDimension; rowIndex++)
 		{
 			// Launch a Forward Substitution Kernel for each Column in this row
-			forward_sub<<<numberOfBlocks, numberOfThreads, numberOfThreads * sizeof(double)>>>(gpuForwardSubstitutionArray, 
-																														  gpuLUMatrix,
-																														  gpuSolveArray,
-																														  gpuPivotMatrix,
-																														  squareMatrixDimension,
-																														  rowIndex);
-
-			// Check for any errors launching the kernel
-			error = cudaGetLastError();
-			if (error != cudaSuccess)
-			{
-				// Print error regarding failure during kernel launch
-				fprintf(stderr, "Error: Failed to complete Matrix Inversion kernel because '%s'!\n", cudaGetErrorString(error));
-
-				// exit before executing any further
-				return 0;
-			}
-
-			// Wait for launched Matrix Inversion kernel to finish
-			//  and log error if any occurred.
-			error = cudaDeviceSynchronize();
-			if (error != cudaSuccess)
-			{
-				fprintf(stderr, "Error: Device Sync returned error code %d after Matrix Inversion Kernel had been successfully launched!\n", error);
-
-				// exit before executing any further
-				return 0;
-			}
-		}
-
-		// Solve by doing backward substition
-		for (int rowIndex = squareMatrixDimension - 1; rowIndex >= 0; rowIndex--)
-		{
-			// Launch a Backward Substitution Kernel for each Column in this row
-			backward_sub<<<numberOfBlocks, numberOfThreads, numberOfThreads * sizeof(double)>>>(gpuBackwardSubstitutionArray,
-																															gpuForwardSubstitutionArray,
+			forward_sub<<<numberOfBlocks, numberOfThreads, numberOfThreads * sizeof(double)>>>(gpuForwardSubstitutionArray,
 																															gpuLUMatrix,
 																															gpuSolveArray,
 																															gpuPivotMatrix,
@@ -815,7 +800,7 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 			if (error != cudaSuccess)
 			{
 				// Print error regarding failure during kernel launch
-				fprintf(stderr, "Error: Failed to complete Matrix Inversion kernel because '%s'!\n", cudaGetErrorString(error));
+				fprintf(stderr, "Error: Failed to complete Forward Substitution kernel because '%s'!\n", cudaGetErrorString(error));
 
 				// exit before executing any further
 				return 0;
@@ -826,13 +811,46 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 			error = cudaDeviceSynchronize();
 			if (error != cudaSuccess)
 			{
-				fprintf(stderr, "Error: Device Sync returned error code %d after Matrix Inversion Kernel had been successfully launched!\n", error);
+				fprintf(stderr, "Error: Device Sync returned error code %d after Forward Substitution Kernel had been successfully launched!\n", error);
 
 				// exit before executing any further
 				return 0;
 			}
 		}
+		
+		// Solve by doing backward substition
+		for (int rowIndex = squareMatrixDimension - 1; rowIndex >= 0; rowIndex--)
+		{
+			// Launch a Backward Substitution Kernel for each Column in this row
+			backward_sub<<<numberOfBlocks, numberOfThreads, numberOfThreads * sizeof(double)>>>(gpuBackwardSubstitutionArray,
+																															gpuForwardSubstitutionArray,
+																															gpuLUMatrix,
+																															squareMatrixDimension,
+																															rowIndex);
 
+			// Check for any errors launching the kernel
+			error = cudaGetLastError();
+			if (error != cudaSuccess)
+			{
+				// Print error regarding failure during kernel launch
+				fprintf(stderr, "Error: Failed to complete Backward Substitution kernel because '%s'!\n", cudaGetErrorString(error));
+
+				// exit before executing any further
+				return 0;
+			}
+
+			// Wait for launched Matrix Inversion kernel to finish
+			//  and log error if any occurred.
+			error = cudaDeviceSynchronize();
+			if (error != cudaSuccess)
+			{
+				fprintf(stderr, "Error: Device Sync returned error code %d after Backward Substitution Kernel had been successfully launched!\n", error);
+
+				// exit before executing any further
+				return 0;
+			}
+		}
+		
 		// Launch Kernel for Final Solving of Inverted Matrix
 		solve<<<numberOfBlocks, numberOfThreads>>>(gpuInvertedMatrix, 
 																 gpuBackwardSubstitutionArray, 
@@ -844,7 +862,7 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 		if (error != cudaSuccess)
 		{
 			// Print error regarding failure during kernel launch
-			fprintf(stderr, "Error: Failed to complete Matrix Inversion kernel because '%s'!\n", cudaGetErrorString(error));
+			fprintf(stderr, "Error: Failed to complete Solve kernel because '%s'!\n", cudaGetErrorString(error));
 
 			// exit before executing any further
 			return 0;
@@ -855,7 +873,7 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 		error = cudaDeviceSynchronize();
 		if (error != cudaSuccess)
 		{
-			fprintf(stderr, "Error: Device Sync returned error code %d after Matrix Inversion Kernel had been successfully launched!\n", error);
+			fprintf(stderr, "Error: Device Sync returned error code %d after Solve Kernel had been successfully launched!\n", error);
 
 			// exit before executing any further
 			return 0;
@@ -1002,31 +1020,13 @@ float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
 
 		// Get Number of Threads Required for Shurs Complement
 		int numberOfBlocks = (int)(numberOfElements / maxThreadsPerBlock) + 1;      // Offset of 1, not 0
-		int numberOfThreads = max((int)(numberOfElements % maxThreadsPerBlock), 1); // Ensure at Least 1 Thread when executing
+		int numberOfThreads = max((int)(numberOfElements % maxThreadsPerBlock), 32); // Ensure at Least 1 Thread when executing
 
 		// Perform Shur Complement
 		shur_complement<<<numberOfBlocks, numberOfThreads, numberOfBytesInMatrix>>>(gpuLUMatrix, columnIndexInMatrix, squareMatrixDimension);
 
 		// Copy result of operation from GPU to CPU Memory
 		cudaMemcpy(cpuInvertedMatrix, gpuLUMatrix, numberOfBytesInMatrix, cudaMemcpyDeviceToHost);
-
-
-		//// Get Number of Threads Required for Shurs Complement
-		//int submatrixRowDimension = (squareMatrixDimension - (columnIndexInMatrix + 1));
-		//int submatrixColumnDimension = (squareMatrixDimension - columnIndexInMatrix);
-		//int numberOfSubMatrixElements = (submatrixColumnDimension * submatrixRowDimension);
-		//int numberOfBlocks = max((int)(numberOfSubMatrixElements / maxThreadsPerBlock), 1);
-		//int numberOfThreads = max((int)(numberOfSubMatrixElements % maxThreadsPerBlock), 1);
-
-		//// Verify Number of Elements is greater than 0
-		//if (numberOfSubMatrixElements > 0)
-		//{
-		//	// Perform Shur Complement
-		//	shur_complement_works<<<numberOfBlocks, numberOfThreads>>>(gpuInvertedMatrix, columnIndexInMatrix, squareMatrixDimension);
-
-		//	// Copy result of operation from GPU to CPU Memory
-		//	cudaMemcpy(cpuInvertedMatrix, gpuInvertedMatrix, numberOfBytesInMatrix, cudaMemcpyDeviceToHost);
-		//}
 	}
 
 	// Keep Track of Stop Time 

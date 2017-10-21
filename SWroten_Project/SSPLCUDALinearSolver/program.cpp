@@ -85,16 +85,8 @@ bool MatrixInversionTestForCPUvsGPU(int dimension)
 	std::string gpuInvertedMatrix;
 	int matrixDimension = dimension;
 	std::vector<std::vector<double>> matrixElements;
-	//std::vector<std::vector<double>> matrixElements{ { 41, 67, 34 },{ 1, 69, 24 },{ 78, 58, 62 } };
 
-	//// Print Arguments for Debugging printf("Number of Arguments: %i\n", argc);
-	//std::cout << "Number of Arguments: " << argc << endl;
-	//std::cout << "Binary Name:         " << argv[0] << endl;
-	//std::cout << "Matrix Dimension:    " << argv[1] << endl;
-
-	//// Get Matrix Dimension from Commandline
-	////matrixDimension = std::atoi(argv[1]);
-	//matrixDimension = 2;
+	// Get Matrix Dimension from Input
 	matrixDimension = dimension;
 
 	// Initialize Matrix with random values for test
@@ -115,12 +107,12 @@ bool MatrixInversionTestForCPUvsGPU(int dimension)
 	Matrix matrix{ matrixElements };
 
 	// Print out Device Properties
-	//matrix.PrintGPUProperties();
+	matrix.PrintGPUProperties();
 
 	// Print out Matrix to Console
-	//std::cout << "Original Matrix:" << endl;
-	//std::cout << matrix.ToString() << endl;
-	//std::cout << endl;
+	std::cout << "Original Matrix:" << endl;
+	std::cout << matrix.ToString() << endl;
+	std::cout << endl;
 
 	// Begin Inversion of Matrix on CPU
 	matrix.InvertCPU();
@@ -141,40 +133,37 @@ bool MatrixInversionTestForCPUvsGPU(int dimension)
 	gpuInvertedMatrix = matrix.GetInvertedMatrixToString();
 	
 	// Print out CPU LU Matrix to Console
-	//std::cout << "LU Matrix (CPU):" << endl;
-	//std::cout << cpuLUMatrix << endl;
-	//std::cout << endl;
+	std::cout << "LU Matrix (CPU):" << endl;
+	std::cout << cpuLUMatrix << endl;
+	std::cout << endl;
 
 	// Print out GPU LU Matrix to Console
-	//std::cout << "LU Matrix (GPU):" << endl;
-	//std::cout << gpuLUMatrix << endl;
-	//std::cout << endl;
+	std::cout << "LU Matrix (GPU):" << endl;
+	std::cout << gpuLUMatrix << endl;
+	std::cout << endl;
 
 	// Print out CPU Inverted Matrix to Console
-	//std::cout << "Inverted Matrix (CPU):" << endl;
-	//std::cout << cpuInvertedMatrix << endl;
-	//std::cout << endl;
+	std::cout << "Inverted Matrix (CPU):" << endl;
+	std::cout << cpuInvertedMatrix << endl;
+	std::cout << endl;
 
 	// Print out GPU Inverted Matrix to Console
-	//std::cout << "Inverted Matrix (GPU):" << endl;
-	//std::cout << gpuInvertedMatrix << endl;
-	//std::cout << endl;
+	std::cout << "Inverted Matrix (GPU):" << endl;
+	std::cout << gpuInvertedMatrix << endl;
+	std::cout << endl;
 
 	// Check Results
 	luSuccess = (cpuLUMatrix == gpuLUMatrix);
 	invertSuccess = (cpuInvertedMatrix == gpuInvertedMatrix);
 
 	// Print out Results
-	if (!luSuccess || !invertSuccess)
-	{
-		std::cout << "Results for Dimension " << dimension << ":" << endl;
-		std::cout << "  LU Equivalent:     " << ((luSuccess == 1) ? "Success" : "Failed") << endl;
-		std::cout << "  Invert Equivalent: " << ((invertSuccess == 1) ? "Success" : "Failed") << endl;
-		std::cout << "  CPU Time (ms):     " << matrix.GetCPUTimeToInvertInMs() << endl;
-		std::cout << "  GPU Time (ms):     " << matrix.GetGPUTimeToInvertInMs() << endl;
-		std::cout << "  Fastest:           " << ((matrix.GetCPUTimeToInvertInMs() < matrix.GetGPUTimeToInvertInMs()) ? "CPU" : "GPU") << endl;
-		std::cout << endl;
-	}
+	std::cout << "Results for Dimension " << dimension << ":" << endl;
+	std::cout << "  LU Equivalent:     " << ((luSuccess == 1) ? "Success" : "Failed") << endl;
+	std::cout << "  Invert Equivalent: " << ((invertSuccess == 1) ? "Success" : "Failed") << endl;
+	std::cout << "  CPU Time (ms):     " << matrix.GetCPUTimeToInvertInMs() << endl;
+	std::cout << "  GPU Time (ms):     " << matrix.GetGPUTimeToInvertInMs() << endl;
+	std::cout << "  Fastest:           " << ((matrix.GetCPUTimeToInvertInMs() < matrix.GetGPUTimeToInvertInMs()) ? "CPU" : "GPU") << endl;
+	std::cout << endl;
 
 	// Return Result
 	return invertSuccess;

@@ -751,7 +751,10 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 
 	// Get Number of Blocks Required and Number of Threads
 	numberOfBlocks = (int)(squareMatrixDimension / maxThreadsPerBlock) + 1;      // Offset of 1, not 0
-	numberOfThreads = max((int)(squareMatrixDimension % maxThreadsPerBlock), 32); // Ensure at Least 32 Thread when executing
+	//numberOfThreads = max((int)(squareMatrixDimension % maxThreadsPerBlock), 32); // Ensure at Least 32 Thread when executing
+	//numberOfThreads = (int)(numberOfBlocks * maxThreadsPerBlock);
+	numberOfThreads = maxThreadsPerBlock;
+
 
 	// Keep Track of Start Time
 	start = get_time();
@@ -788,12 +791,12 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 		for (int rowIndex = 0; rowIndex < squareMatrixDimension; rowIndex++)
 		{
 			// Launch a Forward Substitution Kernel for each Column in this row
-			forward_sub<<<numberOfBlocks, numberOfThreads, numberOfThreads * sizeof(double)>>>(gpuForwardSubstitutionArray,
-																															gpuLUMatrix,
-																															gpuSolveArray,
-																															gpuPivotMatrix,
-																															squareMatrixDimension,
-																															rowIndex);
+			forward_sub<<<numberOfBlocks, numberOfThreads, numberOfBlocks*numberOfThreads * sizeof(double)>>>(gpuForwardSubstitutionArray,
+																																			  gpuLUMatrix,
+																																			  gpuSolveArray,
+																																			  gpuPivotMatrix,
+																																			  squareMatrixDimension,
+																																			  rowIndex);
 
 			// Check for any errors launching the kernel
 			error = cudaGetLastError();
@@ -822,11 +825,11 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 		for (int rowIndex = squareMatrixDimension - 1; rowIndex >= 0; rowIndex--)
 		{
 			// Launch a Backward Substitution Kernel for each Column in this row
-			backward_sub<<<numberOfBlocks, numberOfThreads, numberOfThreads * sizeof(double)>>>(gpuBackwardSubstitutionArray,
-																															gpuForwardSubstitutionArray,
-																															gpuLUMatrix,
-																															squareMatrixDimension,
-																															rowIndex);
+			backward_sub<<<numberOfBlocks, numberOfThreads, numberOfBlocks*numberOfThreads * sizeof(double) >>>(gpuBackwardSubstitutionArray,
+																																				 gpuForwardSubstitutionArray,
+																																				 gpuLUMatrix,
+																																				 squareMatrixDimension,
+																																				 rowIndex);
 
 			// Check for any errors launching the kernel
 			error = cudaGetLastError();
@@ -1020,10 +1023,11 @@ float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
 
 		// Get Number of Threads Required for Shurs Complement
 		int numberOfBlocks = (int)(numberOfElements / maxThreadsPerBlock) + 1;      // Offset of 1, not 0
-		int numberOfThreads = max((int)(numberOfElements % maxThreadsPerBlock), 32); // Ensure at Least 1 Thread when executing
+		//int numberOfThreads = max((int)(numberOfElements % maxThreadsPerBlock), 1); // Ensure at Least 1 Thread when executing
+		int numberOfThreads = maxThreadsPerBlock;
 
 		// Perform Shur Complement
-		shur_complement<<<numberOfBlocks, numberOfThreads, numberOfBytesInMatrix>>>(gpuLUMatrix, columnIndexInMatrix, squareMatrixDimension);
+		shur_complement<<<numberOfBlocks, numberOfThreads, numberOfBlocks*numberOfThreads*sizeof(double)>>>(gpuLUMatrix, columnIndexInMatrix, squareMatrixDimension);
 
 		// Copy result of operation from GPU to CPU Memory
 		cudaMemcpy(cpuInvertedMatrix, gpuLUMatrix, numberOfBytesInMatrix, cudaMemcpyDeviceToHost);

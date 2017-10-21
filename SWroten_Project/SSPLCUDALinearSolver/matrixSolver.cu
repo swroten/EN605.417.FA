@@ -8,9 +8,11 @@
 #include <vector>
 #include <stdio.h>
 #include <tchar.h>
+#include <curand.h>
 #include <cusolverSp.h>
-#include <cuda_runtime.h>
 #include <helper_cuda.h>
+#include <cuda_runtime.h>
+#include <curand_kernel.h>
 
 #include "cublas_v2.h"
 #include "cusolverDn.h"
@@ -42,6 +44,30 @@ __host__ cudaEvent_t get_time(void)
 	cudaEventCreate(&time);
 	cudaEventRecord(time);
 	return time;
+}
+
+__global__ void init(unsigned int seed, curandState_t* states, const int numberOfElements)
+{
+	// Initialize Variables
+	const int currentThreadIndex = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	// Exit if Thread out of bounds
+	if (currentThreadIndex > numberOfElements) { return; }
+
+	// Initialize Random Value
+	curand_init(seed, currentThreadIndex, 0, &states[currentThreadIndex]);
+}
+
+__global__ void randoms(curandState_t* states, double* matrix, const int numberOfElements)
+{
+	// Initialize Variables
+	const int currentThreadIndex = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	// Exit if Thread out of bounds
+	if (currentThreadIndex > numberOfElements) { return; }
+
+	// Set Random Number in Thread Index - make sure non-zero to prevent singular matrix for testing
+	matrix[currentThreadIndex] = max(curand(&states[currentThreadIndex]) % 100, 1);
 }
 
 __global__ void get_max(int *maxValueIndex,
@@ -483,6 +509,51 @@ __global__ void get_shur_complement_mod(double *matrix,
 
 }
 
+void GetRandomNumbersForMatrix(double *cpuMatrix, const int numberOfElements)
+{
+	// Initialize Variables
+	int device = 0;
+	int numberOfBlocks;
+	cudaDeviceProp prop;
+	int numberOfThreads;
+	double *gpuMatrix = 0;
+	curandState_t* states;
+	int maxThreadsPerBlock;
+	const int numberOfBytesInMatrix = numberOfElements * sizeof(double);
+	
+	// Get Properties of this device
+	cudaGetDeviceProperties(&prop, device);
+
+	// Get Max Threads Per Block
+	maxThreadsPerBlock = prop.maxThreadsPerBlock;
+
+	// Verify that Machine has GPU Installed by 
+	//  selecting first GPU available.
+	checkCudaErrors(cudaSetDevice(0));
+	
+	// Get Number of Blocks Required and Number of Threads
+	numberOfBlocks = (int)(numberOfElements / maxThreadsPerBlock) + 1;
+	numberOfThreads = maxThreadsPerBlock;
+
+	// Allocate GPU Memory for States
+	checkCudaErrors(cudaMalloc((void**)&states, numberOfElements * sizeof(curandState_t)));
+
+	// Run Initialization
+	init<<<numberOfBlocks, numberOfThreads>>>((unsigned int)time(0), states, numberOfElements);
+
+	// Allocate GPU Memory for input matrix
+	checkCudaErrors(cudaMalloc((void**)&gpuMatrix, numberOfBytesInMatrix));
+
+	// Add Random Numbers to Matrix
+	randoms<<<numberOfBlocks, numberOfThreads>>>(states, gpuMatrix, numberOfElements);
+	
+	// Copy Matrix Data From CPU Memory to GPU Memory
+	checkCudaErrors(cudaMemcpy(cpuMatrix, gpuMatrix, numberOfBytesInMatrix, cudaMemcpyDeviceToHost));
+
+	// Free Allocated Memory
+	checkCudaErrors(cudaFree(gpuMatrix));
+}
+
 float GetInvertedMatrixCPU(double *cpuInvertedMatrix,
 									const double *cpuLUMatrix,
 									const int *cpuPivotMatrix,
@@ -703,21 +774,15 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 	checkCudaErrors(cudaMalloc((void**)&gpuBackwardSubstitutionArray, squareMatrixDimension * sizeof(double)));
 
 	// Get Number of Blocks Required and Number of Threads
-	numberOfBlocks = (int)(squareMatrixDimension / maxThreadsPerBlock) + 1;      // Offset of 1, not 0
-	//numberOfThreads = get_max((int)(squareMatrixDimension % maxThreadsPerBlock), 32); // Ensure at Least 32 Thread when executing
-	//numberOfThreads = (int)(numberOfBlocks * maxThreadsPerBlock);
+	numberOfBlocks = (int)(squareMatrixDimension / maxThreadsPerBlock) + 1;
 	numberOfThreads = maxThreadsPerBlock;
 	
 	// Keep Track of Start Time
 	start = get_time();
 
 	// Initialize to 0 values
-	for (int index = 0; index < squareMatrixDimension; index++)
-	{
-		// Set to Identity
-		cpuForwardSubstitutionArray[index] = 0.0;
-		cpuBackwardSubstitutionArray[index] = 0.0;
-	}
+	memset(cpuForwardSubstitutionArray, 0, squareMatrixDimension * sizeof(double));
+	memset(cpuBackwardSubstitutionArray, 0, squareMatrixDimension * sizeof(double));
 
 	// Copy CPU Array to GPU Array
 	checkCudaErrors(cudaMemcpy(gpuLUMatrix, cpuLUMatrix, numberOfBytesInMatrix, cudaMemcpyHostToDevice));
@@ -748,10 +813,7 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 																																				   gpuPivotMatrix,
 																																				   squareMatrixDimension,
 																																				   rowIndex);
-
-			// Check for any errors launching the kernel
-			checkCudaErrors(cudaGetLastError());
-
+			
 			// Wait for launched Matrix Inversion kernel to finish  and log error if any occurred.
 			checkCudaErrors(cudaDeviceSynchronize());
 		}
@@ -765,10 +827,7 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 																																				 gpuLUMatrix,
 																																				 squareMatrixDimension,
 																																				 rowIndex);
-
-			// Check for any errors launching the kernel
-			checkCudaErrors(cudaGetLastError());
-
+			
 			// Wait for launched Matrix Inversion kernel to finish and log error if any occurred.
 			checkCudaErrors(cudaDeviceSynchronize());
 		}
@@ -778,10 +837,6 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 																	  gpuBackwardSubstitutionArray, 
 																	  squareMatrixDimension, 
 																	  overallRowIndex);
-
-		// Check for any errors launching the kernel
-		checkCudaErrors(cudaGetLastError());
-
 		// Wait for launched Matrix Inversion kernel to finish  and log error if any occurred.
 		checkCudaErrors(cudaDeviceSynchronize());
 		
@@ -796,6 +851,17 @@ float GetInvertedMatrixGPU(double *cpuInvertedMatrix,
 	timeToCompleteInMs = 0;
 	checkCudaErrors(cudaEventSynchronize(stop));
 	checkCudaErrors(cudaEventElapsedTime(&timeToCompleteInMs, start, stop));
+
+	// Deallocate Memory
+	cudaFreeHost(cpuSolveArray);
+	cudaFreeHost(cpuForwardSubstitutionArray);
+	cudaFreeHost(cpuBackwardSubstitutionArray);
+	checkCudaErrors(cudaFree(gpuPivotMatrix));
+	checkCudaErrors(cudaFree(gpuLUMatrix));
+	checkCudaErrors(cudaFree(gpuSolveArray));
+	checkCudaErrors(cudaFree(gpuInvertedMatrix));
+	checkCudaErrors(cudaFree(gpuForwardSubstitutionArray));
+	checkCudaErrors(cudaFree(gpuBackwardSubstitutionArray));
 
 	// Return time required to complete
 	return timeToCompleteInMs;
@@ -823,7 +889,6 @@ float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
 	double matrixLargestColumnValue = 0;
 	int pivotMatrixCurrentColumnValue = 0;
 	int pivotMatrixLargestColumnValue = 0;
-	int *cpuMaxValueIndex = (int *)malloc(sizeof(int));
 	const int numberOfBytesInMatrix = numberOfElements * sizeof(double);
 	const int numberOfBytesInArray = squareMatrixDimension * sizeof(int);
 
@@ -835,7 +900,6 @@ float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
 
 	// Get Max Threads Per Block
 	maxThreadsPerBlock = prop.maxThreadsPerBlock;
-
 
 	// Verify that Machine has GPU Installed by 
 	//  selecting first GPU available.
@@ -915,15 +979,122 @@ float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
 	timeToCompleteInMs = 0;
 	checkCudaErrors(cudaEventSynchronize(stop));
 	checkCudaErrors(cudaEventElapsedTime(&timeToCompleteInMs, start, stop));
-		
-	// Check for any errors launching the kernel
-	checkCudaErrors(cudaGetLastError());
-
+	
 	// Wait for launched Matrix Inversion kernel to finish and log error if any occurred.
 	checkCudaErrors(cudaDeviceSynchronize());
+	
+	// Deallocate Memory
+	checkCudaErrors(cudaFree(gpuLUMatrix));
+	checkCudaErrors(cudaFree(gpuPivotMatrix));
+	checkCudaErrors(cudaFree(gpuMaxValueIndex));
 
 	// return time required to complete matrix inversion
 	return timeToCompleteInMs;
 }
 
+float GetCuSparseInvertedMatrixGPU(double *cpuInvertedMatrix,
+											  const double *cpuMatrix,
+											  const int squareMatrixDimension)
+{
+	// Initialize Variables
+	cudaEvent_t stop;
+	cudaEvent_t start;
+	int bufferSize = 0;
+	cudaStream_t stream = NULL;
+	float timeToCompleteInMs = 0;
+	cusolverDnHandle_t handle = NULL;
+	double *cpuResultMatrix = NULL; // a copy of d_x
+	double *cpuSolveMatrix = NULL; // b = ones(m,1)
+	double *gpuMatrix = NULL; // a copy of h_A
+	double *gpuResultMatrix = NULL; // x = A \ b
+	double *gpuSolveMatrix = NULL; // a copy of h_b
+	int h_info = 0;
+	int *info = NULL;
+	double *buffer = NULL;
+	int *gpuPivotMatrix = NULL; // pivoting sequence
 
+	// Allocate Memory to Host
+	cpuResultMatrix = (double*)malloc(sizeof(double)*squareMatrixDimension);
+	cpuSolveMatrix = (double*)malloc(sizeof(double)*squareMatrixDimension);
+	
+	// Create Handle
+	checkCudaErrors(cudaStreamCreate(&stream));
+	checkCudaErrors(cusolverDnCreate(&handle));
+	checkCudaErrors(cusolverDnSetStream(handle, stream));
+
+	// Allocate Memory to device arrays
+	checkCudaErrors(cudaMalloc((void **)&gpuMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension));
+	checkCudaErrors(cudaMalloc((void **)&gpuResultMatrix, sizeof(double)*squareMatrixDimension));
+	checkCudaErrors(cudaMalloc((void **)&gpuSolveMatrix, sizeof(double)*squareMatrixDimension));
+
+	// Copy Data from CPU to GPU
+	checkCudaErrors(cudaMemcpy(gpuMatrix, cpuMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension, cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(gpuSolveMatrix, cpuSolveMatrix, sizeof(double)*squareMatrixDimension, cudaMemcpyHostToDevice));
+
+	// Keep Track of Start Time
+	start = get_time();
+
+	// Create Buffer
+	checkCudaErrors(cusolverDnDgetrf_bufferSize(handle,
+															  squareMatrixDimension,
+															  squareMatrixDimension,
+															  (double*)gpuMatrix,
+														 	  squareMatrixDimension,
+															  &bufferSize));
+
+	// Allocate Memory on GPU
+	checkCudaErrors(cudaMalloc(&info, sizeof(int)));
+	checkCudaErrors(cudaMalloc(&buffer, sizeof(double)*bufferSize));
+	checkCudaErrors(cudaMalloc(&gpuPivotMatrix, sizeof(int)*squareMatrixDimension));
+
+	// Initiailize Memory for Info
+	checkCudaErrors(cudaMemset(info, 0, sizeof(int)));
+
+	// Perform LU Decomposition
+	checkCudaErrors(cusolverDnDgetrf(handle, 
+												squareMatrixDimension, 
+												squareMatrixDimension,
+												cpuInvertedMatrix, 
+											   squareMatrixDimension,
+												buffer, 
+												gpuPivotMatrix, 
+												info));
+	checkCudaErrors(cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost));
+	
+	// Compute Matrix Inverse
+	checkCudaErrors(cudaMemcpy(gpuResultMatrix, gpuSolveMatrix, sizeof(double)*squareMatrixDimension, cudaMemcpyDeviceToDevice));
+	checkCudaErrors(cusolverDnDgetrs(handle, 
+												CUBLAS_OP_N, 
+												squareMatrixDimension, 
+												1, 
+												gpuMatrix,
+												squareMatrixDimension,
+												gpuPivotMatrix,
+												gpuResultMatrix, 
+												squareMatrixDimension, 
+												info));
+	checkCudaErrors(cudaDeviceSynchronize());
+
+	// Copy results from GPU Memory to Host Memory
+	checkCudaErrors(cudaMemcpy(cpuResultMatrix, gpuResultMatrix, sizeof(double)*squareMatrixDimension, cudaMemcpyDeviceToHost));
+	
+	// Keep Track of Stop Time 
+	stop = get_time();
+
+	// Synchronize Events
+	timeToCompleteInMs = 0;
+	checkCudaErrors(cudaEventSynchronize(stop));
+	checkCudaErrors(cudaEventElapsedTime(&timeToCompleteInMs, start, stop));
+	
+	// Free up allocated memory
+	if (cpuResultMatrix) { free(cpuResultMatrix); }
+	if (cpuSolveMatrix) { free(cpuSolveMatrix); }
+	if (gpuResultMatrix) { checkCudaErrors(cudaFree(gpuResultMatrix)); }
+	if (gpuSolveMatrix) { checkCudaErrors(cudaFree(gpuSolveMatrix)); }
+	if (handle) { checkCudaErrors(cusolverDnDestroy(handle)); }
+	if (stream) { checkCudaErrors(cudaStreamDestroy(stream)); }
+	if (gpuMatrix) { checkCudaErrors(cudaFree(gpuMatrix)); }
+
+	// return time required to complete matrix inversion
+	return timeToCompleteInMs;
+}

@@ -2,6 +2,9 @@
 
 void PrintDeviceProperties();
 
+void GetRandomNumbersForMatrix(double *cpuMatrix,
+										 const int numberOfElements);
+
 float GetInvertedMatrixCPU(double *cpuInvertedMatrix,
 									const double *cpuLUMatrix,
 									const int *cpuPivotMatrix,

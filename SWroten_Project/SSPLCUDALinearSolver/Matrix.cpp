@@ -3,6 +3,39 @@
 #include <sstream>
 #include <algorithm>
 
+Matrix::Matrix(int rowDim, int colDim)
+{
+	// Set Variables
+	this->rowDimension = rowDim;
+	this->columnDimension = colDim;
+	this->elements = { std::vector<std::vector<double>>() };
+	this->numberOfElements = this->rowDimension * this->columnDimension;
+	this->squareMatrixDimension = std::min(this->rowDimension, this->columnDimension);
+	
+	// Allocate Memory for matrix & inverted matrix array pointer
+	this->cpuMatrixElementsPntr = (double *)malloc(this->numberOfElements * sizeof(double));
+	this->cpuPivotMatrixElementsPntr = (int *)malloc(this->numberOfElements * sizeof(int));
+	this->cpuLUMatrixElementsPntr = (double *)malloc(this->numberOfElements * sizeof(double));
+	this->cpuInvertedMatrixElementsPntr = (double *)malloc(this->numberOfElements * sizeof(double));
+
+	// Get Random Values for Elements
+	GetRandomNumbersForMatrix(this->cpuMatrixElementsPntr, this->numberOfElements);
+
+	// Add Random numbers to elements double vector
+	for (int row = 0; row < this->rowDimension; row++)
+	{
+		// Add new vector for this row
+		this->elements.push_back(std::vector<double>());
+
+		// for each element
+		for (int col = 0; col < this->columnDimension; col++)
+		{
+			// Add Randomly generated Element into CPU Matrix of elements
+			this->elements[row].push_back(this->cpuMatrixElementsPntr[(row * this->squareMatrixDimension) + col]);
+		}
+	}
+}
+
 Matrix::Matrix(std::vector<std::vector<double>> elements)
 {
 	// Set Variables

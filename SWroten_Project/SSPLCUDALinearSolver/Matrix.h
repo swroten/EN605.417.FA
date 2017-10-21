@@ -8,6 +8,7 @@
 class Matrix
 {
 public:
+	Matrix(int rowDim, int colDim);
 	Matrix(std::vector<std::vector<double>> elements);
 	~Matrix();
 	void InvertCPU();

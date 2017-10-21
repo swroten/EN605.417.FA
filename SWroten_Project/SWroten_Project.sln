@@ -7,7 +7,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SSPLCUDALinearSolver", "SSP
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SWrotenModule07Assignment", "SWrotenModule07Assignment\SWrotenModule07Assignment.vcxproj", "{C26A9A9D-1CB8-4E2C-9980-35800D5BAB8A}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SWrotenModule08Assignment", "SWrotenModule08Assignment\SWrotenModule08Assignment.vcxproj", "{A90E8E0B-FCD0-4101-B977-99C3778C59B7}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SWrotenModule08Assignment", "SWrotenModule08Assignment\SWrotenModule08Assignment.vcxproj", "{4036378A-8B92-40EE-B1B4-2872A1F62B85}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,10 +23,10 @@ Global
 		{C26A9A9D-1CB8-4E2C-9980-35800D5BAB8A}.Debug|x64.Build.0 = Debug|x64
 		{C26A9A9D-1CB8-4E2C-9980-35800D5BAB8A}.Release|x64.ActiveCfg = Release|x64
 		{C26A9A9D-1CB8-4E2C-9980-35800D5BAB8A}.Release|x64.Build.0 = Release|x64
-		{A90E8E0B-FCD0-4101-B977-99C3778C59B7}.Debug|x64.ActiveCfg = Debug|x64
-		{A90E8E0B-FCD0-4101-B977-99C3778C59B7}.Debug|x64.Build.0 = Debug|x64
-		{A90E8E0B-FCD0-4101-B977-99C3778C59B7}.Release|x64.ActiveCfg = Release|x64
-		{A90E8E0B-FCD0-4101-B977-99C3778C59B7}.Release|x64.Build.0 = Release|x64
+		{4036378A-8B92-40EE-B1B4-2872A1F62B85}.Debug|x64.ActiveCfg = Debug|x64
+		{4036378A-8B92-40EE-B1B4-2872A1F62B85}.Debug|x64.Build.0 = Debug|x64
+		{4036378A-8B92-40EE-B1B4-2872A1F62B85}.Release|x64.ActiveCfg = Release|x64
+		{4036378A-8B92-40EE-B1B4-2872A1F62B85}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

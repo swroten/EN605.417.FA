@@ -13,8 +13,8 @@ Matrix::Matrix(int rowDim, int colDim)
 	this->squareMatrixDimension = std::min(this->rowDimension, this->columnDimension);
 	
 	// Allocate Memory for matrix & inverted matrix array pointer
+	this->cpuPivotMatrixElementsPntr = (int *)malloc(this->squareMatrixDimension * sizeof(int));
 	this->cpuMatrixElementsPntr = (double *)malloc(this->numberOfElements * sizeof(double));
-	this->cpuPivotMatrixElementsPntr = (int *)malloc(this->numberOfElements * sizeof(int));
 	this->cpuLUMatrixElementsPntr = (double *)malloc(this->numberOfElements * sizeof(double));
 	this->cpuInvertedMatrixElementsPntr = (double *)malloc(this->numberOfElements * sizeof(double));
 
@@ -46,8 +46,8 @@ Matrix::Matrix(std::vector<std::vector<double>> elements)
 	this->squareMatrixDimension = std::min(this->rowDimension, this->columnDimension);
 
 	// Allocate Memory for matrix & inverted matrix array pointer
+	this->cpuPivotMatrixElementsPntr = (int *)malloc(this->squareMatrixDimension * sizeof(int));
 	this->cpuMatrixElementsPntr = (double *)malloc(this->numberOfElements * sizeof(double));
-	this->cpuPivotMatrixElementsPntr = (int *)malloc(this->numberOfElements * sizeof(int));
 	this->cpuLUMatrixElementsPntr = (double *)malloc(this->numberOfElements * sizeof(double));
 	this->cpuInvertedMatrixElementsPntr = (double *)malloc(this->numberOfElements * sizeof(double));
 

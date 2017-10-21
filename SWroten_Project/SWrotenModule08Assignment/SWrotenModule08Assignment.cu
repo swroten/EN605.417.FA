@@ -6,8 +6,9 @@
 #include <iostream>
 #include <vector>
 #include <sstream>
+#include <cstdio>
+#include <cstdlib>
 #include <stdio.h>
-#include <tchar.h>
 #include <curand.h>
 #include <cusolverSp.h>
 #include <helper_cuda.h>
@@ -90,29 +91,29 @@ void GetRandomNumbersForMatrix(double *cpuMatrix, const int numberOfElements)
 
 	// Verify that Machine has GPU Installed by 
 	//  selecting first GPU available.
-	checkCudaErrors(cudaSetDevice(0));
+	cudaSetDevice(0);
 
 	// Get Number of Blocks Required and Number of Threads
 	numberOfBlocks = (int)(numberOfElements / maxThreadsPerBlock) + 1;
-	numberOfThreads = maxThreadsPerBlock;
+	numberOfThreads = (int)(numberOfElements % maxThreadsPerBlock);
 
 	// Allocate GPU Memory for States
-	checkCudaErrors(cudaMalloc((void**)&states, numberOfElements * sizeof(curandState_t)));
+	cudaMalloc((void**)&states, numberOfElements * sizeof(curandState_t));
 
 	// Run Initialization
 	init << <numberOfBlocks, numberOfThreads >> >((unsigned int)time(0), states, numberOfElements);
 
 	// Allocate GPU Memory for input matrix
-	checkCudaErrors(cudaMalloc((void**)&gpuMatrix, numberOfBytesInMatrix));
+	cudaMalloc((void**)&gpuMatrix, numberOfBytesInMatrix);
 
 	// Add Random Numbers to Matrix
 	randoms<<<numberOfBlocks, numberOfThreads>>>(states, gpuMatrix, numberOfElements);
 
 	// Copy Matrix Data From CPU Memory to GPU Memory
-	checkCudaErrors(cudaMemcpy(cpuMatrix, gpuMatrix, numberOfBytesInMatrix, cudaMemcpyDeviceToHost));
+	cudaMemcpy(cpuMatrix, gpuMatrix, numberOfBytesInMatrix, cudaMemcpyDeviceToHost);
 
 	// Free Allocated Memory
-	checkCudaErrors(cudaFree(gpuMatrix));
+	cudaFree(gpuMatrix);
 }
 
 std::string GetMatrixAsString(double *matrixElementsPntr, int squareMatrixDimension)
@@ -308,103 +309,75 @@ float GetCuSparseInvertedMatrixGPU(double *cpuInvertedMatrix,
 											  const int squareMatrixDimension)
 {
 	// Initialize Variables
+	int batch = 1;
+	int *info = NULL;
 	cudaEvent_t stop;
 	cudaEvent_t start;
-	int bufferSize = 0;
-	cudaStream_t stream = NULL;
+	cublasHandle_t handle;
+	double *gpuLUDecompositionMatrix = NULL;
+	int *gpuPivotMatrix = NULL;
+	double *gpuInvertedMatrix = NULL;
 	float timeToCompleteInMs = 0;
-	cusolverDnHandle_t handle = NULL;
-	double *cpuResultMatrix = NULL; // a copy of d_x
-	double *cpuSolveMatrix = NULL; // b = ones(m,1)
-	double *gpuMatrix = NULL; // a copy of h_A
-	double *gpuResultMatrix = NULL; // x = A \ b
-	double *gpuSolveMatrix = NULL; // a copy of h_b
-	int h_info = 0;
-	int *info = NULL;
-	double *buffer = NULL;
-	int *gpuPivotMatrix = NULL; // pivoting sequence
-
-	// Allocate Memory to Host
-	cpuResultMatrix = (double*)malloc(sizeof(double)*squareMatrixDimension);
-	cpuSolveMatrix = (double*)malloc(sizeof(double)*squareMatrixDimension);
-
-	// Create Handle
-	checkCudaErrors(cudaStreamCreate(&stream));
-	checkCudaErrors(cusolverDnCreate(&handle));
-	checkCudaErrors(cusolverDnSetStream(handle, stream));
-
-	// Allocate Memory to device arrays
-	checkCudaErrors(cudaMalloc((void **)&gpuMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension));
-	checkCudaErrors(cudaMalloc((void **)&gpuResultMatrix, sizeof(double)*squareMatrixDimension));
-	checkCudaErrors(cudaMalloc((void **)&gpuSolveMatrix, sizeof(double)*squareMatrixDimension));
+	
+	// Allocate Device Memory
+	cudaMalloc((void **)&gpuPivotMatrix, sizeof(int)*squareMatrixDimension);
+	cudaMalloc((void **)&gpuLUDecompositionMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension);
+	cudaMalloc((void **)&gpuInvertedMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension);
 
 	// Copy Data from CPU to GPU
-	checkCudaErrors(cudaMemcpy(gpuMatrix, cpuMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension, cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(gpuSolveMatrix, cpuSolveMatrix, sizeof(double)*squareMatrixDimension, cudaMemcpyHostToDevice));
+	cudaMemcpy(gpuLUDecompositionMatrix, cpuMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension, cudaMemcpyHostToDevice);
+	cudaMemcpy(gpuInvertedMatrix, cpuInvertedMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension, cudaMemcpyHostToDevice);
+	
+	// Initialize More Variables
+	double **gpuInvertedMatrixArrayOfPointers = NULL;
+	double **gpuLUDecompositionMatrixArrayOfPointers = NULL;
+	double *cpuInvertedMatrixArray[] = { gpuInvertedMatrix };
+	double *cpuLUDecompositionMatrixArray[] = { gpuLUDecompositionMatrix };
+	
+	// Create Handle
+	cublasCreate_v2(&handle);
+
+	// Allocate Memory to device arrays
+	cudaMalloc((void **)&gpuInvertedMatrixArrayOfPointers, sizeof(cpuInvertedMatrixArray));
+	cudaMalloc((void **)&gpuLUDecompositionMatrixArrayOfPointers, sizeof(cpuLUDecompositionMatrixArray));
+
+	// Copy Data from CPU to GPU
+	cudaMemcpy(gpuInvertedMatrixArrayOfPointers, cpuInvertedMatrixArray, sizeof(cpuInvertedMatrixArray), cudaMemcpyHostToDevice);
+	cudaMemcpy(gpuLUDecompositionMatrixArrayOfPointers, cpuLUDecompositionMatrixArray, sizeof(cpuLUDecompositionMatrixArray), cudaMemcpyHostToDevice);
 
 	// Keep Track of Start Time
 	start = get_time();
 
 	// Create Buffer
-	checkCudaErrors(cusolverDnDgetrf_bufferSize(handle,
-															  squareMatrixDimension,
-															  squareMatrixDimension,
-															  (double*)gpuMatrix,
-															  squareMatrixDimension,
-															  &bufferSize));
-
-	// Allocate Memory on GPU
-	checkCudaErrors(cudaMalloc(&info, sizeof(int)));
-	checkCudaErrors(cudaMalloc(&buffer, sizeof(double)*bufferSize));
-	checkCudaErrors(cudaMalloc(&gpuPivotMatrix, sizeof(int)*squareMatrixDimension));
+	cudaMalloc((void **)&info, sizeof(int));
 
 	// Initiailize Memory for Info
-	checkCudaErrors(cudaMemset(info, 0, sizeof(int)));
+	cudaMemset(info, 0, sizeof(int));
 
 	// Perform LU Decomposition
-	checkCudaErrors(cusolverDnDgetrf(handle,
-												squareMatrixDimension,
-												squareMatrixDimension,
-												cpuInvertedMatrix,
-												squareMatrixDimension,
-												buffer,
-												gpuPivotMatrix,
-												info));
-	checkCudaErrors(cudaMemcpy(&h_info, info, sizeof(int), cudaMemcpyDeviceToHost));
+	cublasDgetrfBatched(handle, squareMatrixDimension, gpuLUDecompositionMatrixArrayOfPointers, squareMatrixDimension, gpuPivotMatrix, info, batch);
 
 	// Compute Matrix Inverse
-	checkCudaErrors(cudaMemcpy(gpuResultMatrix, gpuSolveMatrix, sizeof(double)*squareMatrixDimension, cudaMemcpyDeviceToDevice));
-	checkCudaErrors(cusolverDnDgetrs(handle,
-												CUBLAS_OP_N,
-												squareMatrixDimension,
-												1,
-												gpuMatrix,
-												squareMatrixDimension,
-												gpuPivotMatrix,
-												gpuResultMatrix,
-												squareMatrixDimension,
-												info));
-	checkCudaErrors(cudaDeviceSynchronize());
+	cublasDgetriBatched(handle, squareMatrixDimension, (const double **)gpuLUDecompositionMatrixArrayOfPointers, squareMatrixDimension, gpuPivotMatrix, gpuInvertedMatrixArrayOfPointers, squareMatrixDimension, info, batch);
+	cudaDeviceSynchronize();
 
 	// Copy results from GPU Memory to Host Memory
-	checkCudaErrors(cudaMemcpy(cpuResultMatrix, gpuResultMatrix, sizeof(double)*squareMatrixDimension, cudaMemcpyDeviceToHost));
+	cudaMemcpy(cpuInvertedMatrix, gpuInvertedMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension, cudaMemcpyDeviceToHost);
 
 	// Keep Track of Stop Time 
 	stop = get_time();
 
 	// Synchronize Events
 	timeToCompleteInMs = 0;
-	checkCudaErrors(cudaEventSynchronize(stop));
-	checkCudaErrors(cudaEventElapsedTime(&timeToCompleteInMs, start, stop));
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&timeToCompleteInMs, start, stop);
 
 	// Free up allocated memory
-	if (cpuResultMatrix) { free(cpuResultMatrix); }
-	if (cpuSolveMatrix) { free(cpuSolveMatrix); }
-	if (gpuResultMatrix) { checkCudaErrors(cudaFree(gpuResultMatrix)); }
-	if (gpuSolveMatrix) { checkCudaErrors(cudaFree(gpuSolveMatrix)); }
-	if (handle) { checkCudaErrors(cusolverDnDestroy(handle)); }
-	if (stream) { checkCudaErrors(cudaStreamDestroy(stream)); }
-	if (gpuMatrix) { checkCudaErrors(cudaFree(gpuMatrix)); }
+	if (handle) { cublasDestroy_v2(handle); }
+	if (gpuPivotMatrix) { cudaFree(gpuPivotMatrix); }
+	if (gpuInvertedMatrix) { cudaFree(gpuInvertedMatrix); }
+	if (gpuInvertedMatrixArrayOfPointers) { cudaFree(gpuInvertedMatrixArrayOfPointers); }
+	if (gpuLUDecompositionMatrixArrayOfPointers) { cudaFree(gpuLUDecompositionMatrixArrayOfPointers); }
 
 	// return time required to complete matrix inversion
 	return timeToCompleteInMs;
@@ -464,14 +437,18 @@ int main(int argc, char *argv[])
 {
 	// Print Arguments for Debugging 
 	std::cout << "Number of Arguments: " << argc << endl;
+	std::cout << endl;
 
 	// First Arg is Binary Name
 	std::cout << "Binary Name: " << argv[0] << endl;
+	std::cout << endl;
 
 	// Second Arg is # of Threads 
 	std::cout << "Matrix Dimension: " << argv[1] << endl;
+	std::cout << endl;
 
 	// Initialize Variables
+	std::string userInput{ "" };
 	bool invertSuccess = false;
 	float cpuTimeToCompleteInMs = 0;
 	float gpuTimeToCompleteInMs = 0;
@@ -494,22 +471,31 @@ int main(int argc, char *argv[])
 	GetRandomNumbersForMatrix(cpuMatrixElementsPntr, numberOfElements);
 
 	// Print Matrix as String
+	std::cout << "Original Matrix:" << endl;
 	std::cout << GetMatrixAsString(cpuMatrixElementsPntr, squareMatrixDimension) << endl;
+	std::cout << endl;
 	
 	// Perform GPU Matrix Inversion 
 	gpuTimeToCompleteInMs = InvertGPU(cpuInvertedMatrixElementsPntrFromGPUComputation, cpuMatrixElementsPntr, squareMatrixDimension);
 
 	// Get GPU Computed Matrix Inversion as String
 	gpuMatrixInversionResult = GetMatrixAsString(cpuInvertedMatrixElementsPntrFromGPUComputation, squareMatrixDimension);
+		
+	// Print Inverted Matrix (GPU) as String
+	std::cout << "Inverted Matrix (GPU):" << endl;
+	std::cout << gpuMatrixInversionResult << endl;
+	std::cout << endl;
 
 	// Perform CPU Matrix Inversion
-	cpuTimeToCompleteInMs = InvertCPU(cpuInvertedMatrixElementsPntrFromGPUComputation, cpuMatrixElementsPntr, squareMatrixDimension);
+	cpuTimeToCompleteInMs = InvertCPU(cpuInvertedMatrixElementsPntrFromCPUComputation, cpuMatrixElementsPntr, squareMatrixDimension);
 
 	// Get CPU Computed Matrix Inversion as String
 	cpuMatrixInversionResult = GetMatrixAsString(cpuInvertedMatrixElementsPntrFromCPUComputation, squareMatrixDimension);
-	
-	// Print Inverted Matrix as String
-	std::cout << gpuMatrixInversionResult << endl;
+
+	// Print Inverted Matrix (CPU) as String
+	std::cout << "Inverted Matrix (CPU):" << endl;
+	std::cout << cpuMatrixInversionResult << endl;
+	std::cout << endl;
 
 	// Check Results for success
 	invertSuccess = (cpuMatrixInversionResult == gpuMatrixInversionResult);
@@ -521,6 +507,12 @@ int main(int argc, char *argv[])
 	std::cout << "  GPU Time (ms):     " << gpuTimeToCompleteInMs << endl;
 	std::cout << "  Fastest:           " << ((cpuTimeToCompleteInMs < gpuTimeToCompleteInMs) ? "CPU" : "GPU") << endl;
 	std::cout << endl;
+
+	// Wait for user to close application
+	std::cout << "Press Any Button to Exit..." << endl;
+
+	// Get User Input
+	getline(cin, userInput);
 
 	// return
 	return EXIT_SUCCESS;

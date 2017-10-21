@@ -160,6 +160,12 @@ void Matrix::InvertGPU()
 	this->gpuTimeToInvertInMs = timeToGetLUDecompositionMatrix + timeToInvertMatrixFromLUDecompositionAndPivotMatrix;
 }
 
+void Matrix::InvertWithCuBLASOnGPU()
+{
+	
+}
+
+
 float Matrix::GetCPUTimeToInvertInMs() const
 {
 	return this->cpuTimeToInvertInMs;

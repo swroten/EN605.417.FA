@@ -13,6 +13,7 @@ public:
 	~Matrix();
 	void InvertCPU();
 	void InvertGPU();
+	void InvertWithCuBLASOnGPU();
 	float GetCPUTimeToInvertInMs() const;
 	std::vector<double> GetElements() const;
 	float GetGPUTimeToInvertInMs() const;

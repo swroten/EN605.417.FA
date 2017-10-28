@@ -3,6 +3,8 @@
 #include "math_functions.h"
 #include "device_launch_parameters.h"
 
+#include <cmath>
+#include <iomanip>
 #include <iostream>
 #include <vector>
 #include <sstream>
@@ -14,8 +16,10 @@
 #include <helper_cuda.h>
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
-#include <thrust/host_vector.h>
+#include <thrust/transform_reduce.h>
+#include <thrust/functional.h>
 #include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
 
 #include "cublas_v2.h"
 #include "cusolverDn.h"
@@ -420,6 +424,34 @@ float InvertGPU(double *cpuInvertedMatrix, const double *cpuMatrix, const int sq
 	return GetCuSparseInvertedMatrixGPU(cpuInvertedMatrix, cpuMatrix, squareMatrixDimension);
 }
 
+double ComputeMagnitudeOfMatrix(const double *cpuInvertedMatrix, const int numberOfElements)
+{
+	// Initialize Variables
+	double magnitudeOfMatrix = 0.0;
+	thrust::device_vector<double> cpuMatrix(cpuInvertedMatrix, cpuInvertedMatrix + numberOfElements);
+		
+	// Square all matrix values using Thrust transform function
+	thrust::transform(cpuMatrix.begin(), cpuMatrix.end(), cpuMatrix.begin(), cpuMatrix.begin(), thrust::multiplies<double>());
+
+	// Sum the transformed matrix of squared values using Thrust reduce function
+	magnitudeOfMatrix = std::sqrt(thrust::reduce(cpuMatrix.begin(), cpuMatrix.end(), (double) 0.0, thrust::plus<double>()));
+
+	// return computed magnitude
+	return magnitudeOfMatrix;
+}
+
+double GetMagnitudeOfMatrixWithSpecifiedPrecision(const double magnitude, const int precision)
+{
+	// Initialize Variable
+	std::ostringstream magnitudeWithSpecifiedPrecision;
+
+	// Get specified precision
+	magnitudeWithSpecifiedPrecision << setprecision(precision) << fixed << magnitude;
+		
+	// return result as double
+	return std::stod(magnitudeWithSpecifiedPrecision.str());
+}
+
 // Main Function
 int main(int argc, char *argv[])
 {
@@ -441,14 +473,19 @@ int main(int argc, char *argv[])
 	float cpuTimeToCompleteInMs = 0;
 	float gpuTimeToCompleteInMs = 0;
 	int numberOfRows = atoi(argv[1]);
-	int numberOfColumns = atoi(argv[1]);
 	double *cpuMatrixElementsPntr = 0;
+	const int decimalsOfPrecision = 10;
+	int numberOfColumns = atoi(argv[1]);
 	std::string cpuMatrixInversionResult{ "" };
 	std::string gpuMatrixInversionResult{ "" };
+	double cpuMatrixInversionResultMagnitude = 0;
+	double gpuMatrixInversionResultMagnitude = 0;
 	int numberOfElements = numberOfRows * numberOfColumns;
 	double *cpuInvertedMatrixElementsPntrFromCPUComputation = 0;
 	double *cpuInvertedMatrixElementsPntrFromGPUComputation = 0;
 	int squareMatrixDimension = min(numberOfRows, numberOfColumns);
+	thrust::device_vector<double> cpuInvertedMatrixElementsAsThrustDeviceVector(numberOfElements);
+	thrust::device_vector<double> gpuInvertedMatrixElementsAsThrustDeviceVector(numberOfElements);
 
 	// Allocate Memory
 	cpuMatrixElementsPntr = (double *)malloc(numberOfElements * sizeof(double));
@@ -457,7 +494,7 @@ int main(int argc, char *argv[])
 
 	// Get Random Values for Elements
 	GetRandomNumbersForMatrix(cpuMatrixElementsPntr, numberOfElements);
-
+	
 	// Print Matrix as String
 	std::cout << "Original Matrix:" << endl;
 	std::cout << GetMatrixAsString(cpuMatrixElementsPntr, squareMatrixDimension) << endl;
@@ -466,6 +503,12 @@ int main(int argc, char *argv[])
 	// Perform GPU Matrix Inversion 
 	gpuTimeToCompleteInMs = InvertGPU(cpuInvertedMatrixElementsPntrFromGPUComputation, cpuMatrixElementsPntr, squareMatrixDimension);
 
+	// Compute Magnitude of Inverted Matrix for CPU
+	gpuMatrixInversionResultMagnitude = ComputeMagnitudeOfMatrix(cpuInvertedMatrixElementsPntrFromGPUComputation, numberOfElements);
+
+	// Update to have specified number of decimals precision
+	gpuMatrixInversionResultMagnitude = GetMagnitudeOfMatrixWithSpecifiedPrecision(gpuMatrixInversionResultMagnitude, decimalsOfPrecision);
+
 	// Get GPU Computed Matrix Inversion as String
 	gpuMatrixInversionResult = GetMatrixAsString(cpuInvertedMatrixElementsPntrFromGPUComputation, squareMatrixDimension);
 
@@ -473,9 +516,15 @@ int main(int argc, char *argv[])
 	std::cout << "Inverted Matrix (GPU):" << endl;
 	std::cout << gpuMatrixInversionResult << endl;
 	std::cout << endl;
-
+	
 	// Perform CPU Matrix Inversion
 	cpuTimeToCompleteInMs = InvertCPU(cpuInvertedMatrixElementsPntrFromCPUComputation, cpuMatrixElementsPntr, squareMatrixDimension);
+
+	// Compute Magnitude of Inverted Matrix for CPU
+	cpuMatrixInversionResultMagnitude = ComputeMagnitudeOfMatrix(cpuInvertedMatrixElementsPntrFromCPUComputation, numberOfElements);
+
+	// Update to have specified number of decimals precision
+	cpuMatrixInversionResultMagnitude = GetMagnitudeOfMatrixWithSpecifiedPrecision(cpuMatrixInversionResultMagnitude, decimalsOfPrecision);
 
 	// Get CPU Computed Matrix Inversion as String
 	cpuMatrixInversionResult = GetMatrixAsString(cpuInvertedMatrixElementsPntrFromCPUComputation, squareMatrixDimension);
@@ -484,16 +533,18 @@ int main(int argc, char *argv[])
 	std::cout << "Inverted Matrix (CPU):" << endl;
 	std::cout << cpuMatrixInversionResult << endl;
 	std::cout << endl;
-
+	
 	// Check Results for success
-	invertSuccess = (cpuMatrixInversionResult == gpuMatrixInversionResult);
+	invertSuccess = (cpuMatrixInversionResultMagnitude == gpuMatrixInversionResultMagnitude);
 
 	// Print out Results
 	std::cout << "Results for Dimension " << squareMatrixDimension << ":" << endl;
-	std::cout << "  Invert Equivalent: " << ((invertSuccess == 1) ? "Success" : "Failed") << endl;
-	std::cout << "  CPU Time (ms):     " << cpuTimeToCompleteInMs << endl;
-	std::cout << "  GPU Time (ms):     " << gpuTimeToCompleteInMs << endl;
-	std::cout << "  Fastest:           " << ((cpuTimeToCompleteInMs < gpuTimeToCompleteInMs) ? "CPU" : "GPU") << endl;
+	std::cout << "  CPU Inverted Matrix Magnitude: " << cpuMatrixInversionResultMagnitude << endl;
+	std::cout << "  GPU Inverted Matrix Magnitude: " << gpuMatrixInversionResultMagnitude << endl;
+	std::cout << "  Invert Equivalent:             " << ((invertSuccess == 1) ? "Success" : "Failed") << endl;
+	std::cout << "  CPU Time (ms):                 " << cpuTimeToCompleteInMs << endl;
+	std::cout << "  GPU Time (ms):                 " << gpuTimeToCompleteInMs << endl;
+	std::cout << "  Fastest:                       " << ((cpuTimeToCompleteInMs < gpuTimeToCompleteInMs) ? "CPU" : "GPU") << endl;
 	std::cout << endl;
 
 	// Wait for user to close application

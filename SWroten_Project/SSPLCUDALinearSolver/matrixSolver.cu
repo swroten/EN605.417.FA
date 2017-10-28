@@ -4,6 +4,7 @@
 #include "math_functions.h"
 #include "device_launch_parameters.h"
 
+#include <iomanip>
 #include <sstream>
 #include <vector>
 #include <stdio.h>
@@ -13,6 +14,10 @@
 #include <helper_cuda.h>
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
+#include <thrust/transform_reduce.h>
+#include <thrust/functional.h>
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
 
 #include "cublas_v2.h"
 #include "cusolverDn.h"
@@ -1071,3 +1076,31 @@ float GetCuSparseInvertedMatrixGPU(double *cpuInvertedMatrix,
 	return timeToCompleteInMs;
 }
 
+
+double ComputeMagnitudeOfMatrix(const double *cpuInvertedMatrix, const int numberOfElements)
+{
+	// Initialize Variables
+	double magnitudeOfMatrix = 0.0;
+	thrust::device_vector<double> cpuMatrix(cpuInvertedMatrix, cpuInvertedMatrix + numberOfElements);
+
+	// Square all matrix values using Thrust transform function
+	thrust::transform(cpuMatrix.begin(), cpuMatrix.end(), cpuMatrix.begin(), cpuMatrix.begin(), thrust::multiplies<double>());
+
+	// Sum the transformed matrix of squared values using Thrust reduce function
+	magnitudeOfMatrix = std::sqrt(thrust::reduce(cpuMatrix.begin(), cpuMatrix.end(), (double) 0.0, thrust::plus<double>()));
+
+	// return computed magnitude
+	return magnitudeOfMatrix;
+}
+
+double GetMagnitudeOfMatrixWithSpecifiedPrecision(const double magnitude, const int precision)
+{
+	// Initialize Variable
+	std::ostringstream magnitudeWithSpecifiedPrecision;
+
+	// Get specified precision
+	magnitudeWithSpecifiedPrecision << setprecision(precision) << fixed << magnitude;
+
+	// return result as double
+	return std::stod(magnitudeWithSpecifiedPrecision.str());
+}

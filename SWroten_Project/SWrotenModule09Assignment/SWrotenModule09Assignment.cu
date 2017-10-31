@@ -1,4 +1,3 @@
-
 #include "cuda_runtime.h"
 #include "math_functions.h"
 #include "device_launch_parameters.h"
@@ -20,10 +19,15 @@
 #include <thrust/functional.h>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
+#include <ImagesCPU.h>
+#include <ImagesNPP.h>
+#include <Exceptions.h>
+#include <ImageIO.h>
+#include <npp.h>
 
+#include "nvgraph.h"
 #include "cublas_v2.h"
 #include "cusolverDn.h"
-#include "helper_cusolver.h"
 
 using namespace std;
 
@@ -65,7 +69,7 @@ __global__ void init(unsigned int seed, curandState_t* states, const int numberO
 	curand_init(seed, currentThreadIndex, 0, &states[currentThreadIndex]);
 }
 
-__global__ void randoms(curandState_t* states, double* matrix, const int numberOfElements)
+__global__ void randoms(curandState_t* states, double* matrix, const int mod, const double div, const int numberOfElements)
 {
 	// Initialize Variables
 	const int currentThreadIndex = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -73,11 +77,12 @@ __global__ void randoms(curandState_t* states, double* matrix, const int numberO
 	// Exit if Thread out of bounds
 	if (currentThreadIndex > numberOfElements) { return; }
 
-	// Set Random Number in Thread Index - make sure non-zero to prevent singular matrix for testing
-	matrix[currentThreadIndex] = max(curand(&states[currentThreadIndex]) % 100, 1);
+	// Set Random Number in Thread Index - make sure non-zero to prevent singular matrix
+	//  and scale between 0 and 1
+	matrix[currentThreadIndex] = (max(curand(&states[currentThreadIndex]) % mod, 1) / div);
 }
 
-void GetRandomNumbersForMatrix(double *cpuMatrix, const int numberOfElements)
+void GetRandomNumbersForArray(double *cpuMatrix, const int mod, const double div, const int numberOfElements)
 {
 	// Initialize Variables
 	int device = 0;
@@ -107,13 +112,13 @@ void GetRandomNumbersForMatrix(double *cpuMatrix, const int numberOfElements)
 	cudaMalloc((void**)&states, numberOfElements * sizeof(curandState_t));
 
 	// Run Initialization
-	init << <numberOfBlocks, numberOfThreads >> >((unsigned int)time(0), states, numberOfElements);
+	init<<<numberOfBlocks, numberOfThreads>>>((unsigned int)time(0), states, numberOfElements);
 
 	// Allocate GPU Memory for input matrix
 	cudaMalloc((void**)&gpuMatrix, numberOfBytesInMatrix);
 
 	// Add Random Numbers to Matrix
-	randoms << <numberOfBlocks, numberOfThreads >> >(states, gpuMatrix, numberOfElements);
+	randoms<<<numberOfBlocks, numberOfThreads>>>(states, gpuMatrix, mod, div, numberOfElements);
 
 	// Copy Matrix Data From CPU Memory to GPU Memory
 	cudaMemcpy(cpuMatrix, gpuMatrix, numberOfBytesInMatrix, cudaMemcpyDeviceToHost);
@@ -311,10 +316,10 @@ float GetCuSparseInvertedMatrixGPU(double *cpuInvertedMatrix, const double *cpuM
 	cudaEvent_t stop;
 	cudaEvent_t start;
 	cublasHandle_t handle;
-	double *gpuLUDecompositionMatrix = NULL;
 	int *gpuPivotMatrix = NULL;
-	double *gpuInvertedMatrix = NULL;
 	float timeToCompleteInMs = 0;
+	double *gpuInvertedMatrix = NULL;
+	double *gpuLUDecompositionMatrix = NULL;
 
 	// Allocate Device Memory
 	cudaMalloc((void **)&gpuPivotMatrix, sizeof(int)*squareMatrixDimension);
@@ -440,7 +445,7 @@ double ComputeMagnitudeOfMatrix(const double *cpuInvertedMatrix, const int numbe
 	return magnitudeOfMatrix;
 }
 
-double GetMagnitudeOfMatrixWithSpecifiedPrecision(const double magnitude, const int precision)
+std::string GetMagnitudeOfMatrixWithSpecifiedPrecision(const double magnitude, const int precision)
 {
 	// Initialize Variable
 	std::ostringstream magnitudeWithSpecifiedPrecision;
@@ -449,7 +454,159 @@ double GetMagnitudeOfMatrixWithSpecifiedPrecision(const double magnitude, const 
 	magnitudeWithSpecifiedPrecision << setprecision(precision) << fixed << magnitude;
 		
 	// return result as double
-	return std::stod(magnitudeWithSpecifiedPrecision.str());
+	return magnitudeWithSpecifiedPrecision.str();
+}
+
+float GetShortestPathThroughGraph(int startingIndex, int indexOfElementWithinArrayOfEdgesWhereNewColumnStarts[], int indexOfRowWithinArrayOfEdgesForEachEdge[], int numberOfVertices, int numberOfEdges)
+{
+	// Initialize Variables	
+	int index = 0;
+	cudaEvent_t stop;
+	cudaEvent_t start;
+	nvgraphGraphDescr_t nvGraph;
+	double *graphEdgeWeights = 0;
+	nvgraphHandle_t nvGraphHandle;
+	cudaDataType_t* vertexType = 0;
+	float timeToGetShortestPath = 0;
+	double *shortestPathThroughGraph = 0;
+	cudaDataType_t edgeType = CUDA_R_64F;
+	nvgraphCSCTopology32I_t nvGraphTopologyInput;
+	
+	// Allocate Memory
+	vertexType = (cudaDataType_t *)malloc(sizeof(cudaDataType_t));
+	graphEdgeWeights = (double *)malloc(numberOfEdges * sizeof(double));
+	shortestPathThroughGraph = (double *)malloc(numberOfVertices * sizeof(double));
+	nvGraphTopologyInput = (nvgraphCSCTopology32I_t)malloc(sizeof(struct nvgraphCSCTopology32I_st));
+
+	// Get Random Numbers between 0 and 1 for graph edge weights
+	GetRandomNumbersForArray(graphEdgeWeights, 100, 100, numberOfEdges);
+	
+	// Print Graph to Console
+	std::cout << "Printed Graph Edges with Randomized Weights:" << endl;
+	for (int i = 0; i < numberOfVertices; i++)
+	{
+		for (int j = indexOfElementWithinArrayOfEdgesWhereNewColumnStarts[i]; j < indexOfElementWithinArrayOfEdgesWhereNewColumnStarts[i + 1]; j++)
+		{
+			// Write out Edge Source and Destination Vertices, as well as the weight for that edge
+			std::cout << "  Source: " << indexOfRowWithinArrayOfEdgesForEachEdge[j] << ", Destination: " << i << ", Weight: " << graphEdgeWeights[index] << endl;
+
+			// Increment index for edge weights array
+			index++;
+		}
+	}
+
+	// Add Extra line for spacing
+	std::cout << endl;
+
+	// Keep Track of Start Time
+	start = get_time();
+
+	// Set Vertex Dataset
+	vertexType[0] = edgeType;
+
+	// Create Graph
+	nvgraphCreate(&nvGraphHandle);
+	nvgraphCreateGraphDescr(nvGraphHandle, &nvGraph);
+
+	// Set Graph Topology Structure Data Members
+	nvGraphTopologyInput->nedges = numberOfEdges;
+	nvGraphTopologyInput->nvertices = numberOfVertices;
+	nvGraphTopologyInput->source_indices = indexOfRowWithinArrayOfEdgesForEachEdge;
+	nvGraphTopologyInput->destination_offsets = indexOfElementWithinArrayOfEdgesWhereNewColumnStarts;
+
+	// Set Graph Structure
+	nvgraphSetGraphStructure(nvGraphHandle, nvGraph, (void*)nvGraphTopologyInput, NVGRAPH_CSC_32);
+	nvgraphAllocateVertexData(nvGraphHandle, nvGraph, 1, vertexType);
+	nvgraphAllocateEdgeData(nvGraphHandle, nvGraph, 1, &edgeType);
+	nvgraphSetEdgeData(nvGraphHandle, nvGraph, (void*)graphEdgeWeights, 0);
+
+	// Get Shortest Path for input Vertex
+	nvgraphSssp(nvGraphHandle, nvGraph, 0, &startingIndex, 0);
+
+	// Get Vertex Data for Shortest Path through Graph
+	nvgraphGetVertexData(nvGraphHandle, nvGraph, (void*)shortestPathThroughGraph, 0);
+
+	// Print Path to console
+	std::cout << "Shortest Path:" << endl;
+
+	// Print out results
+	for (int i = 0; i < numberOfVertices; i++)
+	{
+		std::cout << "  Edge Weight: " << shortestPathThroughGraph[i] << endl;
+	}
+	
+	// Add Extra line for spacing
+	std::cout << endl;
+
+	if (vertexType) { free(vertexType); }
+	if (graphEdgeWeights) { free(graphEdgeWeights); }
+	if (shortestPathThroughGraph) { free(shortestPathThroughGraph); }
+	if (nvGraphTopologyInput) { free(nvGraphTopologyInput); }
+	if (nvGraph) { nvgraphDestroyGraphDescr(nvGraphHandle, nvGraph); }
+	if (nvGraphHandle) { nvgraphDestroy(nvGraphHandle); }
+
+	// Keep Track of Stop Time 
+	stop = get_time();
+
+	// Synchronize Events
+	timeToGetShortestPath = 0;
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&timeToGetShortestPath, start, stop);
+
+	// return time required to complete matrix inversion
+	return timeToGetShortestPath;
+}
+
+void PerformSimpleNppOperation(int widthReduction, int heightReduction, const char *outputFilePath)
+{
+	// Initialize Variables
+	NppStatus result;
+	NppiPoint anchor;
+	NppiSize ROISize;
+	NppiSize maskSize;
+	NppiSize cpuImageSize;
+	npp::ImageCPU_8u_C1 cpuImage;
+	const char *filepath = "C:\\ProgramData\\NVIDIA Corporation\\CUDA Samples\\v9.0\\common\\data\\Lena.pgm";
+
+	// Load Image into memory
+	npp::loadImage(filepath, cpuImage);
+	npp::ImageNPP_8u_C1 gpuImage(cpuImage);
+
+	// Get Source Image Size and Create Destination Image
+	ROISize = { (int)gpuImage.width() , (int)gpuImage.height() };
+	cpuImageSize = { (int)gpuImage.width(), (int)gpuImage.height() };
+	npp::ImageNPP_8u_C1 gpuImageOutput(cpuImageSize.width, cpuImageSize.height);
+	maskSize = { (int)gpuImage.width() / widthReduction , (int)gpuImage.height() / heightReduction };
+	anchor = { maskSize.width / 2, maskSize.height / 2 };
+
+	// Write out file
+	std::cout << "Perform Filter Box on: " << filepath << std::endl;
+	
+	// Filter Box
+	result = nppiFilterBox_8u_C1R(gpuImage.data(), gpuImage.pitch(), gpuImageOutput.data(), gpuImageOutput.pitch(), ROISize, maskSize, anchor);
+
+	// Verify Success
+	if (result != NPP_NO_ERROR)
+	{
+		std::cout << "Error: Failed to Box Filter!" << std::endl;
+		return;
+	}
+
+	// Create Output Location for new image
+	npp::ImageCPU_8u_C1 cpuImageOutput(gpuImageOutput.size());
+
+	// copy from device to host
+	gpuImageOutput.copyTo(cpuImageOutput.data(), cpuImageOutput.pitch());
+
+	// Save Image
+	saveImage(outputFilePath, cpuImageOutput);
+
+	// Write Success
+	std::cout << "Successfully Generated Filtered Box File: " << outputFilePath << std::endl;
+
+	// Free allocated memory on device
+	nppiFree(gpuImage.data());
+	nppiFree(gpuImageOutput.data());
 }
 
 // Main Function
@@ -468,7 +625,7 @@ int main(int argc, char *argv[])
 	std::cout << endl;
 
 	// Initialize Variables
-	std::string userInput{ "" };
+	std::string userInput = "";
 	bool invertSuccess = false;
 	float cpuTimeToCompleteInMs = 0;
 	float gpuTimeToCompleteInMs = 0;
@@ -476,11 +633,13 @@ int main(int argc, char *argv[])
 	double *cpuMatrixElementsPntr = 0;
 	const int decimalsOfPrecision = 10;
 	int numberOfColumns = atoi(argv[1]);
-	std::string cpuMatrixInversionResult{ "" };
-	std::string gpuMatrixInversionResult{ "" };
+	std::string cpuMatrixInversionResult = "";
+	std::string gpuMatrixInversionResult = "";
 	double cpuMatrixInversionResultMagnitude = 0;
 	double gpuMatrixInversionResultMagnitude = 0;
 	int numberOfElements = numberOfRows * numberOfColumns;
+	std::string cpuMatrixInversionResultMagnitudeAsString = "";
+	std::string gpuMatrixInversionResultMagnitudeAsString = "";
 	double *cpuInvertedMatrixElementsPntrFromCPUComputation = 0;
 	double *cpuInvertedMatrixElementsPntrFromGPUComputation = 0;
 	int squareMatrixDimension = min(numberOfRows, numberOfColumns);
@@ -493,7 +652,7 @@ int main(int argc, char *argv[])
 	cpuInvertedMatrixElementsPntrFromCPUComputation = (double *)malloc(numberOfElements * sizeof(double));
 
 	// Get Random Values for Elements
-	GetRandomNumbersForMatrix(cpuMatrixElementsPntr, numberOfElements);
+	GetRandomNumbersForArray(cpuMatrixElementsPntr, 100, 1, numberOfElements);
 	
 	// Print Matrix as String
 	std::cout << "Original Matrix:" << endl;
@@ -507,7 +666,7 @@ int main(int argc, char *argv[])
 	gpuMatrixInversionResultMagnitude = ComputeMagnitudeOfMatrix(cpuInvertedMatrixElementsPntrFromGPUComputation, numberOfElements);
 
 	// Update to have specified number of decimals precision
-	gpuMatrixInversionResultMagnitude = GetMagnitudeOfMatrixWithSpecifiedPrecision(gpuMatrixInversionResultMagnitude, decimalsOfPrecision);
+	gpuMatrixInversionResultMagnitudeAsString = GetMagnitudeOfMatrixWithSpecifiedPrecision(gpuMatrixInversionResultMagnitude, decimalsOfPrecision);
 
 	// Get GPU Computed Matrix Inversion as String
 	gpuMatrixInversionResult = GetMatrixAsString(cpuInvertedMatrixElementsPntrFromGPUComputation, squareMatrixDimension);
@@ -524,7 +683,7 @@ int main(int argc, char *argv[])
 	cpuMatrixInversionResultMagnitude = ComputeMagnitudeOfMatrix(cpuInvertedMatrixElementsPntrFromCPUComputation, numberOfElements);
 
 	// Update to have specified number of decimals precision
-	cpuMatrixInversionResultMagnitude = GetMagnitudeOfMatrixWithSpecifiedPrecision(cpuMatrixInversionResultMagnitude, decimalsOfPrecision);
+	cpuMatrixInversionResultMagnitudeAsString = GetMagnitudeOfMatrixWithSpecifiedPrecision(cpuMatrixInversionResultMagnitude, decimalsOfPrecision);
 
 	// Get CPU Computed Matrix Inversion as String
 	cpuMatrixInversionResult = GetMatrixAsString(cpuInvertedMatrixElementsPntrFromCPUComputation, squareMatrixDimension);
@@ -535,7 +694,7 @@ int main(int argc, char *argv[])
 	std::cout << endl;
 	
 	// Check Results for success
-	invertSuccess = (cpuMatrixInversionResultMagnitude == gpuMatrixInversionResultMagnitude);
+	invertSuccess = (cpuMatrixInversionResultMagnitudeAsString == gpuMatrixInversionResultMagnitudeAsString);
 
 	// Print out Results
 	std::cout << "Results for Dimension " << squareMatrixDimension << ":" << endl;
@@ -546,6 +705,70 @@ int main(int argc, char *argv[])
 	std::cout << "  GPU Time (ms):                 " << gpuTimeToCompleteInMs << endl;
 	std::cout << "  Fastest:                       " << ((cpuTimeToCompleteInMs < gpuTimeToCompleteInMs) ? "CPU" : "GPU") << endl;
 	std::cout << endl;
+	
+	// Create Graph
+	int numberOfEdges = 14;
+	int numberOfVertices = 6;
+	float timeToGetShortestPathInMsForVertex0 = 0;
+	float timeToGetShortestPathInMsForVertex1 = 0;
+	float timeToGetShortestPathInMsForVertex2 = 0;
+	float timeToGetShortestPathInMsForVertex3 = 0;
+	float timeToGetShortestPathInMsForVertex4 = 0;
+	float timeToGetShortestPathInMsForVertex5 = 0;
+	int indexOfRowWithinArrayOfEdgesForEachEdge[] = { 2, 4, 0, 2, 0, 2, 1, 4, 5, 2, 3, 0, 3, 4 };
+	int indexOfElementWithinArrayOfEdgesWhereNewColumnStarts[] = { 0, 2, 4, 6, 9, 11, numberOfEdges };
+	
+	// Test out nvGraph Library by computing Graph Shortest Path from Starting Vertex 0
+	std::cout << "Run Test using nvGraph Library to Compute Shortest Path from Vertex 0:" << std::endl;
+	std::cout << endl;
+	timeToGetShortestPathInMsForVertex0 = GetShortestPathThroughGraph(0, indexOfElementWithinArrayOfEdgesWhereNewColumnStarts, indexOfRowWithinArrayOfEdgesForEachEdge, numberOfVertices, numberOfEdges);
+
+	// Test out nvGraph Library by computing Graph Shortest Path from Starting Vertex 1
+	std::cout << "Run Test using nvGraph Library to Compute Shortest Path from Vertex 1:" << std::endl;
+	std::cout << endl;
+	timeToGetShortestPathInMsForVertex1 = GetShortestPathThroughGraph(1, indexOfElementWithinArrayOfEdgesWhereNewColumnStarts, indexOfRowWithinArrayOfEdgesForEachEdge, numberOfVertices, numberOfEdges);
+
+	// Test out nvGraph Library by computing Graph Shortest Path from Starting Vertex 2
+	std::cout << "Run Test using nvGraph Library to Compute Shortest Path from Vertex 2:" << std::endl;
+	std::cout << endl;
+	timeToGetShortestPathInMsForVertex2 = GetShortestPathThroughGraph(2, indexOfElementWithinArrayOfEdgesWhereNewColumnStarts, indexOfRowWithinArrayOfEdgesForEachEdge, numberOfVertices, numberOfEdges);
+
+	// Test out nvGraph Library by computing Graph Shortest Path from Starting Vertex 3
+	std::cout << "Run Test using nvGraph Library to Compute Shortest Path from Vertex 3:" << std::endl;
+	std::cout << endl;
+	timeToGetShortestPathInMsForVertex3 = GetShortestPathThroughGraph(3, indexOfElementWithinArrayOfEdgesWhereNewColumnStarts, indexOfRowWithinArrayOfEdgesForEachEdge, numberOfVertices, numberOfEdges);
+
+	// Test out nvGraph Library by computing Graph Shortest Path from Starting Vertex 4
+	std::cout << "Run Test using nvGraph Library to Compute Shortest Path from Vertex 4:" << std::endl;
+	std::cout << endl;
+	timeToGetShortestPathInMsForVertex4 = GetShortestPathThroughGraph(4, indexOfElementWithinArrayOfEdgesWhereNewColumnStarts, indexOfRowWithinArrayOfEdgesForEachEdge, numberOfVertices, numberOfEdges);
+
+	// Test out nvGraph Library by computing Graph Shortest Path from Starting Vertex 5
+	std::cout << "Run Test using nvGraph Library to Compute Shortest Path from Vertex 5:" << std::endl;
+	std::cout << endl;
+	timeToGetShortestPathInMsForVertex5 = GetShortestPathThroughGraph(5, indexOfElementWithinArrayOfEdgesWhereNewColumnStarts, indexOfRowWithinArrayOfEdgesForEachEdge, numberOfVertices, numberOfEdges);
+
+	std::cout << "Resulting Time to Compute Shortest Path:" << endl;
+	std::cout << "  From Vertex 0: " << timeToGetShortestPathInMsForVertex0 << endl;
+	std::cout << "  From Vertex 1: " << timeToGetShortestPathInMsForVertex1 << endl;
+	std::cout << "  From Vertex 2: " << timeToGetShortestPathInMsForVertex2 << endl;
+	std::cout << "  From Vertex 3: " << timeToGetShortestPathInMsForVertex3 << endl;
+	std::cout << "  From Vertex 4: " << timeToGetShortestPathInMsForVertex4 << endl;
+	std::cout << "  From Vertex 5: " << timeToGetShortestPathInMsForVertex5 << endl;
+	std::cout << endl;
+	
+	// Print out Header for Test
+	std::cout << "Run Test using NPP Library:" << std::endl;
+	
+	// Print out GPU Properties
+	std::cout << " GPU Name: " << nppGetGpuName() << std::endl;
+	std::cout << " Max Threads Per Block: " << nppGetMaxThreadsPerBlock() << std::endl;
+	
+	// Perform Simple Operation - Filter Box with no reduction
+	PerformSimpleNppOperation(1, 1, "result_1.pgm");
+
+	// Perform Simple Operation - Filter Box with half size reduction
+	PerformSimpleNppOperation(2, 2, "result_2.pgm");
 
 	// Wait for user to close application
 	std::cout << "Press Any Button to Exit..." << endl;

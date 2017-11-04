@@ -14,4 +14,14 @@
       <Extensions>cl</Extensions>
     </Filter>
   </ItemGroup>
+  <ItemGroup>
+    <Intel_OpenCL_Build_Rules Include="HelloWorld.cl">
+      <Filter>OpenCL Files</Filter>
+    </Intel_OpenCL_Build_Rules>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="HelloWorld.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
 </Project>

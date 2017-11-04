@@ -110,7 +110,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Intel_OpenCL_Build_Rules>
-      <Device>0</Device>
+      <Device>1</Device>
     </Intel_OpenCL_Build_Rules>
     <ClCompile>
       <AdditionalIncludeDirectories>$(INTELOCLSDKROOT)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
@@ -179,6 +179,10 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <Intel_OpenCL_Build_Rules Include="HelloWorld.cl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="HelloWorld.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

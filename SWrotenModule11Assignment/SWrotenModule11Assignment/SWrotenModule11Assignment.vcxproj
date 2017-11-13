@@ -186,6 +186,9 @@
   <ItemGroup>
     <ClCompile Include="Convolution.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Assignment11_Wroten_Nov13.pdf" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\IntelOpenCL.targets" />

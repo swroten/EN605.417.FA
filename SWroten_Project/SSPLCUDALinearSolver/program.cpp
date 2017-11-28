@@ -10,10 +10,6 @@
 
 using namespace std;
 
-
-
-
-
 void DetectFailureCasesForMatrixInversion(int dimension)
 {
 	// Variables

@@ -1,0 +1,98 @@
+﻿  Preprocessing: simple_functions.cl
+  Ignoring -TARGETOS option - not supported for current CPU runtime version
+  OpenCL Intel(R) Graphics device was found!
+  Device name: Intel(R) HD Graphics 2500
+  Device version: OpenCL 1.2 
+  Device vendor: Intel(R) Corporation
+  Device profile: FULL_PROFILE
+  fcl build 1 succeeded.
+  fcl build 2 succeeded.
+  bcl build succeeded.
+  
+  add info:
+  	Maximum work-group size: 256
+  	Compiler work-group size: (0, 0, 0)
+  	Local memory size: 0
+  	Preferred multiple of work-group size: 16
+  	Minimum amount of private memory: 0
+  
+  sub info:
+  	Maximum work-group size: 256
+  	Compiler work-group size: (0, 0, 0)
+  	Local memory size: 0
+  	Preferred multiple of work-group size: 16
+  	Minimum amount of private memory: 0
+  
+  mult info:
+  	Maximum work-group size: 256
+  	Compiler work-group size: (0, 0, 0)
+  	Local memory size: 0
+  	Preferred multiple of work-group size: 16
+  	Minimum amount of private memory: 0
+  
+  div info:
+  	Maximum work-group size: 256
+  	Compiler work-group size: (0, 0, 0)
+  	Local memory size: 0
+  	Preferred multiple of work-group size: 16
+  	Minimum amount of private memory: 0
+  
+  power info:
+  	Maximum work-group size: 256
+  	Compiler work-group size: (0, 0, 0)
+  	Local memory size: 0
+  	Preferred multiple of work-group size: 16
+  	Minimum amount of private memory: 0
+  
+  Build succeeded!
+  
+  SWrotenModule13Assignment.cpp
+SWrotenModule13Assignment.cpp(117): warning C4996: 'clCreateCommandQueue': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1428): note: see declaration of 'clCreateCommandQueue'
+SWrotenModule13Assignment.cpp(222): warning C4101: 'result': unreferenced local variable
+SWrotenModule13Assignment.cpp(378): warning C4244: 'return': conversion from 'cl_ulong' to 'int', possible loss of data
+SWrotenModule13Assignment.cpp(313): warning C4996: 'clEnqueueMarker': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1409): note: see declaration of 'clEnqueueMarker'
+SWrotenModule13Assignment.cpp(316): warning C4996: 'clEnqueueBarrier': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1418): note: see declaration of 'clEnqueueBarrier'
+SWrotenModule13Assignment.cpp(319): warning C4996: 'clEnqueueWaitForEvents': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1413): note: see declaration of 'clEnqueueWaitForEvents'
+SWrotenModule13Assignment.cpp(484): warning C4244: 'return': conversion from 'cl_ulong' to 'int', possible loss of data
+SWrotenModule13Assignment.cpp(419): warning C4996: 'clEnqueueMarker': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1409): note: see declaration of 'clEnqueueMarker'
+SWrotenModule13Assignment.cpp(422): warning C4996: 'clEnqueueBarrier': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1418): note: see declaration of 'clEnqueueBarrier'
+SWrotenModule13Assignment.cpp(425): warning C4996: 'clEnqueueWaitForEvents': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1413): note: see declaration of 'clEnqueueWaitForEvents'
+SWrotenModule13Assignment.cpp(431): warning C4996: 'clEnqueueMarker': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1409): note: see declaration of 'clEnqueueMarker'
+SWrotenModule13Assignment.cpp(434): warning C4996: 'clEnqueueWaitForEvents': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1413): note: see declaration of 'clEnqueueWaitForEvents'
+SWrotenModule13Assignment.cpp(602): warning C4244: 'return': conversion from 'cl_ulong' to 'int', possible loss of data
+SWrotenModule13Assignment.cpp(519): warning C4996: 'clEnqueueBarrier': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1418): note: see declaration of 'clEnqueueBarrier'
+SWrotenModule13Assignment.cpp(525): warning C4996: 'clEnqueueMarker': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1409): note: see declaration of 'clEnqueueMarker'
+SWrotenModule13Assignment.cpp(528): warning C4996: 'clEnqueueBarrier': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1418): note: see declaration of 'clEnqueueBarrier'
+SWrotenModule13Assignment.cpp(531): warning C4996: 'clEnqueueWaitForEvents': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1413): note: see declaration of 'clEnqueueWaitForEvents'
+SWrotenModule13Assignment.cpp(537): warning C4996: 'clEnqueueMarker': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1409): note: see declaration of 'clEnqueueMarker'
+SWrotenModule13Assignment.cpp(540): warning C4996: 'clEnqueueBarrier': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1418): note: see declaration of 'clEnqueueBarrier'
+SWrotenModule13Assignment.cpp(543): warning C4996: 'clEnqueueWaitForEvents': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1413): note: see declaration of 'clEnqueueWaitForEvents'
+SWrotenModule13Assignment.cpp(549): warning C4996: 'clEnqueueMarker': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1409): note: see declaration of 'clEnqueueMarker'
+SWrotenModule13Assignment.cpp(552): warning C4996: 'clEnqueueWaitForEvents': was declared deprecated
+  C:\Intel\OpenCL\sdk\include\CL/cl.h(1413): note: see declaration of 'clEnqueueWaitForEvents'
+SWrotenModule13Assignment.cpp(707): warning C4244: 'return': conversion from 'cl_ulong' to 'int', possible loss of data
+SWrotenModule13Assignment.cpp(615): warning C4101: 'result': unreferenced local variable
+SWrotenModule13Assignment.cpp(611): warning C4101: 'profiling_info': unreferenced local variable
+SWrotenModule13Assignment.cpp(608): warning C4101: 'errNum': unreferenced local variable
+  SWrotenModule13Assignment.vcxproj -> C:\Users\Scott\Source\Repos\EN605.417.FA\SWrotenModule13Assignment\Debug\SWrotenModule13Assignment.exe
+  SWrotenModule13Assignment.vcxproj -> C:\Users\Scott\Source\Repos\EN605.417.FA\SWrotenModule13Assignment\Debug\SWrotenModule13Assignment.pdb (Full PDB)
+  mult.cl
+  simple_functions.cl
+          2 file(s) copied.

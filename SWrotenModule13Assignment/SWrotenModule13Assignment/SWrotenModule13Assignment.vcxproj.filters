@@ -14,4 +14,14 @@
       <Extensions>cl</Extensions>
     </Filter>
   </ItemGroup>
+  <ItemGroup>
+    <Intel_OpenCL_Build_Rules Include="simple_functions.cl">
+      <Filter>OpenCL Files</Filter>
+    </Intel_OpenCL_Build_Rules>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="SWrotenModule13Assignment.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
 </Project>

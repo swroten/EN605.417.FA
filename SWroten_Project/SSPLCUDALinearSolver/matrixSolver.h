@@ -27,3 +27,9 @@ float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
 											 const double *cpuMatrix, 
 											 const int numberOfElements,
 											 const int squareMatrixDimension);
+
+float GetCuSparseInvertedMatrixGPU(double *cpuInvertedMatrix, 
+											  const double *cpuMatrix, 
+											  const int squareMatrixDimension);
+
+double ComputeMagnitudeOfMatrix(const double *cpuInvertedMatrix, const int numberOfElements);

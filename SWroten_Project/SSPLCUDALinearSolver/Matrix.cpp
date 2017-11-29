@@ -65,6 +65,16 @@ Matrix::~Matrix()
 {
 }
 
+std::string Matrix::GetInvertedMatrixToString() const
+{
+	return this->invertedMatrixAsString;
+}
+
+std::string Matrix::GetLUMatrixToString() const
+{
+	return this->luMatrixAsString;
+}
+
 void Matrix::InvertCPU()
 {
 	// Initialize Variables
@@ -86,35 +96,31 @@ void Matrix::InvertCPU()
 
 	// On the CPU - Perform LU Decomposition to get LU Matrix and Pivot Matrix - returns time required to complete in ms
 	timeToGetLUDecompositionMatrix = GetLUDecompositionMatrixCPU(this->cpuLUMatrixElementsPntr,
-																					 this->cpuPivotMatrixElementsPntr, 
-																					 this->cpuMatrixElementsPntr, 
-																					 this->numberOfElements, 
-																					 this->squareMatrixDimension);
-
+		this->cpuPivotMatrixElementsPntr,
+		this->cpuMatrixElementsPntr,
+		this->numberOfElements,
+		this->squareMatrixDimension);
+	
 	// Build LU Decomposition Matrix As String
 	this->luMatrixAsString = GetMatrixAsString(this->cpuLUMatrixElementsPntr, this->squareMatrixDimension);
 
-	// On the CPU - Use the LU Matrix and Pivot Matrix to get Inverte Matrix - returns time required to complete in ms 
-	timeToInvertMatrixFromLUDecompositionAndPivotMatrix = GetInvertedMatrixCPU(this->cpuInvertedMatrixElementsPntr, 
-																										this->cpuLUMatrixElementsPntr,
-																										this->cpuPivotMatrixElementsPntr, 
-																										this->squareMatrixDimension);
+	// Compute LU Decomposition Matrix Magnitude
+	this->luMatrixMagnitude = ComputeMagnitudeOfMatrix(this->cpuLUMatrixElementsPntr, this->numberOfElements);
 
+	// On the CPU - Use the LU Matrix and Pivot Matrix to get Inverte Matrix - returns time required to complete in ms 
+	timeToInvertMatrixFromLUDecompositionAndPivotMatrix = GetInvertedMatrixCPU(this->cpuInvertedMatrixElementsPntr,
+		this->cpuLUMatrixElementsPntr,
+		this->cpuPivotMatrixElementsPntr,
+		this->squareMatrixDimension);
+	
 	// Build Inverted Matrix As String
 	this->invertedMatrixAsString = GetMatrixAsString(this->cpuInvertedMatrixElementsPntr, this->squareMatrixDimension);
 
+	// Compute LU Decomposition Matrix Magnitude
+	this->inverseMatrixMagnitude = ComputeMagnitudeOfMatrix(this->cpuInvertedMatrixElementsPntr, this->numberOfElements);
+
 	// Accumulate all Time Required to invert Matrix on cpu
 	this->cpuTimeToInvertInMs = timeToGetLUDecompositionMatrix + timeToInvertMatrixFromLUDecompositionAndPivotMatrix;
-}
-
-std::string Matrix::GetInvertedMatrixToString() const
-{
-	return this->invertedMatrixAsString;
-}
-
-std::string Matrix::GetLUMatrixToString() const
-{
-	return this->luMatrixAsString;
 }
 
 void Matrix::InvertGPU()
@@ -142,19 +148,25 @@ void Matrix::InvertGPU()
 																					 this->cpuMatrixElementsPntr,
 																					 this->numberOfElements,
 																					 this->squareMatrixDimension);
-
+	
 	// Build LU Decomposition Matrix As String
 	this->luMatrixAsString = GetMatrixAsString(this->cpuLUMatrixElementsPntr, this->squareMatrixDimension);
 
-	// On the CPU - Use the LU Matrix and Pivot Matrix to get Inverte Matrix - returns time required to complete in ms 
+	// Compute LU Decomposition Matrix Magnitude
+	this->luMatrixMagnitude = ComputeMagnitudeOfMatrix(this->cpuLUMatrixElementsPntr, this->numberOfElements);
+
+	// On the GPU - Use the LU Matrix and Pivot Matrix to get Inverte Matrix - returns time required to complete in ms 
 	timeToInvertMatrixFromLUDecompositionAndPivotMatrix = GetInvertedMatrixGPU(this->cpuInvertedMatrixElementsPntr,
 																										this->cpuLUMatrixElementsPntr,
 																										this->cpuPivotMatrixElementsPntr,
 																										this->numberOfElements,
 																										this->squareMatrixDimension);
-
+	
 	// Build Inverted Matrix As String
 	this->invertedMatrixAsString = GetMatrixAsString(this->cpuInvertedMatrixElementsPntr, this->squareMatrixDimension);
+
+	// Compute LU Decomposition Matrix Magnitude
+	this->inverseMatrixMagnitude = ComputeMagnitudeOfMatrix(this->cpuInvertedMatrixElementsPntr, this->numberOfElements);
 
 	// Accumulate all Time Required to invert Matrix on cpu
 	this->gpuTimeToInvertInMs = timeToGetLUDecompositionMatrix + timeToInvertMatrixFromLUDecompositionAndPivotMatrix;
@@ -162,9 +174,34 @@ void Matrix::InvertGPU()
 
 void Matrix::InvertWithCuBLASOnGPU()
 {
+	// Initialize Variables
+	double *luDecompMatrix = (double*)malloc((sizeof(double)*this->numberOfElements));
+	double *luDecompMatrixArray[] = { luDecompMatrix };
+	double **cpuLUDecompositionMatrixArrayOfPointers = (double**)malloc(sizeof(luDecompMatrixArray));
 	
-}
+	// Initialize Pivot Matrix
+	for (int i = 0; i < this->squareMatrixDimension; i++)
+	{
+		this->cpuPivotMatrixElementsPntr[i] = i;
+	}
 
+	// Add elements to matrix
+	for (int i = 0; i < this->numberOfElements; i++)
+	{
+		this->cpuLUMatrixElementsPntr[i] = this->cpuMatrixElementsPntr[i];
+		this->cpuInvertedMatrixElementsPntr[i] = this->cpuMatrixElementsPntr[i];
+	}
+
+	this->gpuTimeToInvertInMs = GetCuSparseInvertedMatrixGPU(this->cpuInvertedMatrixElementsPntr,
+																				this->cpuMatrixElementsPntr,
+																				this->squareMatrixDimension);
+
+	// Build Inverted Matrix As String
+	this->invertedMatrixAsString = GetMatrixAsString(this->cpuInvertedMatrixElementsPntr, this->squareMatrixDimension);
+
+	// Compute LU Decomposition Matrix Magnitude
+	this->inverseMatrixMagnitude = ComputeMagnitudeOfMatrix(this->cpuInvertedMatrixElementsPntr, this->numberOfElements);
+}
 
 float Matrix::GetCPUTimeToInvertInMs() const
 {
@@ -276,6 +313,16 @@ int Matrix::GetNumberOfElementsInMatrix(std::vector<std::vector<double>> matrix)
 int Matrix::GetSquareMatrixDimension() const
 {
 	return this->squareMatrixDimension;
+}
+
+double Matrix::GetMagnitudeOfInvertedMatrixElements() const
+{
+	return this->inverseMatrixMagnitude;
+}
+
+double Matrix::GetMagnitudeOfLUDecompositionMatrixElements() const
+{
+	return this->luMatrixMagnitude;
 }
 
 std::string Matrix::ToString() const

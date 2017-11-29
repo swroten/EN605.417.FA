@@ -75,130 +75,6 @@ __global__ void randoms(curandState_t* states, double* matrix, const int numberO
 	matrix[currentThreadIndex] = max(curand(&states[currentThreadIndex]) % 100, 1);
 }
 
-__global__ void get_max(int *maxValueIndex,
-							   const double *matrix,
-							   const int columnIndexInMatrix,
-							   const int squareMatrixDimension)
-{
-	// Create Shared Memory Array
-	extern volatile __shared__ double sharedDataArray[];
-	extern volatile __shared__ int sharedDataArrayIndices[];
-
-	// Initialize Shared Data Array Values
-	sharedDataArray[threadIdx.x] = matrix[(threadIdx.x * squareMatrixDimension) + columnIndexInMatrix];
-
-	// Sychronize all Threads
-	__syncthreads();
-
-	// Check if Block Size is greater than 512
-	if (blockDim.x >= 512)
-	{
-		if (threadIdx.x < 256)
-		{
-			// Update shared memory 
-			sharedDataArrayIndices[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 256])) ?
-				threadIdx.x : threadIdx.x + 256;
-			sharedDataArray[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 256])) ?
-				abs(sharedDataArray[threadIdx.x]) : abs(sharedDataArray[threadIdx.x + 256]);
-		}
-
-		// Sychronize all Threads
-		__syncthreads();
-	}
-
-	if (blockDim.x >= 256)
-	{
-		if (threadIdx.x < 128)
-		{
-			// Update shared memory 
-			sharedDataArrayIndices[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 128])) ?
-				threadIdx.x : threadIdx.x + 128;
-			sharedDataArray[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 128])) ?
-				abs(sharedDataArray[threadIdx.x]) : abs(sharedDataArray[threadIdx.x + 128]);
-		}
-
-		// Sychronize all Threads
-		__syncthreads();
-	}
-
-	if (blockDim.x >= 128)
-	{
-		if (threadIdx.x < 64)
-		{
-			// Update shared memory 
-			sharedDataArrayIndices[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 64])) ?
-				threadIdx.x : threadIdx.x + 64;
-			sharedDataArray[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 64])) ?
-				abs(sharedDataArray[threadIdx.x]) : abs(sharedDataArray[threadIdx.x + 64]);
-		}
-
-		// Sychronize all Threads
-		__syncthreads();
-	}
-
-	if (threadIdx.x < 32)
-	{
-		if (blockDim.x >= 64)
-		{
-			// Update shared memory 
-			sharedDataArrayIndices[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 32])) ?
-				threadIdx.x : threadIdx.x + 32;
-			sharedDataArray[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 32])) ?
-				abs(sharedDataArray[threadIdx.x]) : abs(sharedDataArray[threadIdx.x + 32]);
-		}
-
-		if (blockDim.x >= 32)
-		{
-			// Update shared memory 
-			sharedDataArrayIndices[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 16])) ?
-				threadIdx.x : threadIdx.x + 16;
-			sharedDataArray[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 16])) ?
-				abs(sharedDataArray[threadIdx.x]) : abs(sharedDataArray[threadIdx.x + 16]);
-		}
-
-		if (blockDim.x >= 16)
-		{
-			// Update shared memory 
-			sharedDataArrayIndices[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 8])) ?
-				threadIdx.x : threadIdx.x + 8;
-			sharedDataArray[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 8])) ?
-				abs(sharedDataArray[threadIdx.x]) : abs(sharedDataArray[threadIdx.x + 8]);
-		}
-
-		if (blockDim.x >= 8)
-		{
-			// Update shared memory 
-			sharedDataArrayIndices[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 4])) ?
-				threadIdx.x : threadIdx.x + 4;
-			sharedDataArray[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 4])) ?
-				abs(sharedDataArray[threadIdx.x]) : abs(sharedDataArray[threadIdx.x + 4]);
-		}
-
-		if (blockDim.x >= 4)
-		{
-			// Update shared memory 
-			sharedDataArrayIndices[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 2])) ?
-				threadIdx.x : threadIdx.x + 2;
-			sharedDataArray[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 2])) ?
-				abs(sharedDataArray[threadIdx.x]) : abs(sharedDataArray[threadIdx.x + 2]);
-		}
-
-		if (blockDim.x >= 2)
-		{
-			// Update shared memory 
-			sharedDataArrayIndices[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 1])) ?
-				threadIdx.x : threadIdx.x + 1;
-			sharedDataArray[threadIdx.x] = (abs(sharedDataArray[threadIdx.x]) > abs(sharedDataArray[threadIdx.x + 1])) ?
-				abs(sharedDataArray[threadIdx.x]) : abs(sharedDataArray[threadIdx.x + 1]);
-		}
-	}
-
-	if (threadIdx.x == 0)
-	{
-		maxValueIndex[0] = sharedDataArrayIndices[0];
-	}
-}
-
 __global__ void get_forward_sub(double *fowardSubstitutionArray,
 										  const double *matrix,
 										  const double *solveArray,
@@ -484,36 +360,6 @@ __global__ void get_shur_complement(double *matrix,
 	matrix[threadIndexWithinEntireMatrix] = matrixInSharedMemory[threadIndexWithinEntireMatrix];
 }
 
-__global__ void get_shur_complement_mod(double *matrix,
-													 const int currentColumnInMatrix,
-													 const int squareMatrixDimension)
-{
-	// Get Constant Values
-	const double diagonalMatrixValue = matrix[(currentColumnInMatrix * squareMatrixDimension) + currentColumnInMatrix];
-
-	// Initialize Variables
-	const int threadIndexWithinSubMatrix = (blockIdx.x * blockDim.x) + threadIdx.x;
-	const int columnsInSubMatrix = (squareMatrixDimension - currentColumnInMatrix);
-	const int rowIndexInSubMatrix = (int)(threadIndexWithinSubMatrix / columnsInSubMatrix);
-	const int threadIndexWithinEntireMatrix = ((currentColumnInMatrix + 1) * squareMatrixDimension) + currentColumnInMatrix + threadIndexWithinSubMatrix + (rowIndexInSubMatrix * (squareMatrixDimension - columnsInSubMatrix));
-	const int threadIndexWithinEntireMatrixAsRowIndex = (threadIndexWithinEntireMatrix / squareMatrixDimension);
-	const int threadIndexWithinEntireMatrixColumnIndex = (threadIndexWithinEntireMatrix % squareMatrixDimension);
-	const int sameRowFixedColumnIndex = (threadIndexWithinEntireMatrixAsRowIndex * squareMatrixDimension) + currentColumnInMatrix;
-	const int fixedRowSameColumnIndex = (currentColumnInMatrix * squareMatrixDimension) + threadIndexWithinEntireMatrixColumnIndex;
-	const bool isADivisionColumn = (currentColumnInMatrix == threadIndexWithinEntireMatrixColumnIndex);
-
-	// Perform Division on Elements of First Column
-	matrix[threadIndexWithinEntireMatrix] = isADivisionColumn ? (matrix[threadIndexWithinEntireMatrix] / diagonalMatrixValue) : matrix[threadIndexWithinEntireMatrix];
-
-	// Sychronize all Threads
-	__syncthreads();
-
-	// Perform Subtraction on Elements Not in First Column
-	matrix[threadIndexWithinEntireMatrix] = !isADivisionColumn ? (matrix[threadIndexWithinEntireMatrix] -
-		(matrix[sameRowFixedColumnIndex] * matrix[fixedRowSameColumnIndex])) : matrix[threadIndexWithinEntireMatrix];
-
-}
-
 void GetRandomNumbersForMatrix(double *cpuMatrix, const int numberOfElements)
 {
 	// Initialize Variables
@@ -565,8 +411,9 @@ float GetInvertedMatrixCPU(double *cpuInvertedMatrix,
 									const int squareMatrixDimension)
 {
 	// Initialize Variables
-	cudaEvent_t stop;
-	cudaEvent_t start;
+	LARGE_INTEGER stopTime;
+	LARGE_INTEGER frequency;
+	LARGE_INTEGER startTime;
 	double sumLowerTriangle = 0;
 	double sumUpperTriangle = 0;
 	float timeToCompleteInMs = 0;
@@ -574,8 +421,11 @@ float GetInvertedMatrixCPU(double *cpuInvertedMatrix,
 	vector<double> fowardSubstitutionArray(squareMatrixDimension, 0.0);
 	vector<double> backwardSubtitutionArray(squareMatrixDimension, 0.0);
 
+	// Get Frequency
+	QueryPerformanceFrequency(&frequency);
+
 	// Keep Track of Start Time
-	start = get_time();
+	QueryPerformanceCounter(&startTime);
 
 	// Solve for the Identity Matrix using resuls of LU Decomposition
 	//  Step through each row and solve
@@ -629,12 +479,10 @@ float GetInvertedMatrixCPU(double *cpuInvertedMatrix,
 	}
 
 	// Keep Track of Stop Time 
-	stop = get_time();
+	QueryPerformanceCounter(&stopTime);
 
-	// Synchronize Events
-	timeToCompleteInMs = 0;
-	cudaEventSynchronize(stop);
-	cudaEventElapsedTime(&timeToCompleteInMs, start, stop);
+	// Get Total Time to Complete
+	timeToCompleteInMs = (float)((stopTime.QuadPart - startTime.QuadPart) * 1000.0 / frequency.QuadPart);
 
 	// Return time required to complete
 	return timeToCompleteInMs;
@@ -648,9 +496,10 @@ float GetLUDecompositionMatrixCPU(double *cpuInvertedMatrix,
 											 const int squareMatrixDimension)
 {
 	// Initialize Variables
-	cudaEvent_t stop;
-	cudaEvent_t start;
 	int maxValueIndex = 0;
+	LARGE_INTEGER stopTime;
+	LARGE_INTEGER frequency;
+	LARGE_INTEGER startTime;
 	double largestValue = 0.0;
 	float timeToCompleteInMs = 0;
 	double matrixCurrentColumnValue = 0;
@@ -662,8 +511,11 @@ float GetLUDecompositionMatrixCPU(double *cpuInvertedMatrix,
 	// Copy Initial Matrix into Inverted Matrix
 	cudaMemcpy(cpuInvertedMatrix, cpuMatrix, numberOfElements * sizeof(double), cudaMemcpyHostToHost);
 
+	// Get Frequency
+	QueryPerformanceFrequency(&frequency);
+
 	// Keep Track of Start Time
-	start = get_time();
+	QueryPerformanceCounter(&startTime);
 
 	// for each column in matrix
 	for (int columnIndexInMatrix = 0; columnIndexInMatrix < squareMatrixDimension; columnIndexInMatrix++)
@@ -709,12 +561,10 @@ float GetLUDecompositionMatrixCPU(double *cpuInvertedMatrix,
 	}		
 
 	// Keep Track of Stop Time 
-	stop = get_time();
+	QueryPerformanceCounter(&stopTime);
 
-	// Synchronize Events
-	timeToCompleteInMs = 0;
-	cudaEventSynchronize(stop);
-	cudaEventElapsedTime(&timeToCompleteInMs, start, stop);
+	// Get Total Time to Complete
+	timeToCompleteInMs = (float)((stopTime.QuadPart - startTime.QuadPart) * 1000.0 / frequency.QuadPart);
 
 	// Return time required to complete
 	return timeToCompleteInMs;
@@ -967,7 +817,6 @@ float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
 
 		// Get Number of Threads Required for Shurs Complement
 		int numberOfBlocks = (int)(numberOfElements / maxThreadsPerBlock) + 1;      // Offset of 1, not 0
-		//int numberOfThreads = get_max((int)(numberOfElements % maxThreadsPerBlock), 1); // Ensure at Least 1 Thread when executing
 		int numberOfThreads = maxThreadsPerBlock;
 
 		// Perform Shur Complement
@@ -997,29 +846,37 @@ float GetLUDecompositionMatrixGPU(double *cpuInvertedMatrix,
 	return timeToCompleteInMs;
 }
 
-float GetCuSparseInvertedMatrixGPU(double *cpuInvertedMatrix,
-											  const double *cpuMatrix,
+float GetCuSparseInvertedMatrixGPU(double *cpuInvertedMatrix, 
+											  const double *cpuMatrix, 
 											  const int squareMatrixDimension)
 {
 	// Initialize Variables
-	int batch = 1;
+	int batchSize = 1;
 	int *info = NULL;
-	cudaEvent_t stop;
-	cudaEvent_t start;
 	cublasHandle_t handle;
-	double *gpuLUDecompositionMatrix = NULL;
+	LARGE_INTEGER stopTime;
+	LARGE_INTEGER frequency;
+	LARGE_INTEGER startTime;
 	int *gpuPivotMatrix = NULL;
-	double *gpuInvertedMatrix = NULL;
 	float timeToCompleteInMs = 0;
+	double *gpuInvertedMatrix = NULL;
+	double *gpuLUDecompositionMatrix = NULL;
+	int numberOfElements = squareMatrixDimension*squareMatrixDimension;
+
+	// Get Frequency
+	QueryPerformanceFrequency(&frequency);
+
+	// Keep Track of Start Time
+	QueryPerformanceCounter(&startTime);
 
 	// Allocate Device Memory
 	checkCudaErrors(cudaMalloc((void **)&gpuPivotMatrix, sizeof(int)*squareMatrixDimension));
-	checkCudaErrors(cudaMalloc((void **)&gpuLUDecompositionMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension));
-	checkCudaErrors(cudaMalloc((void **)&gpuInvertedMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension));
+	checkCudaErrors(cudaMalloc((void **)&gpuLUDecompositionMatrix, sizeof(double)*numberOfElements));
+	checkCudaErrors(cudaMalloc((void **)&gpuInvertedMatrix, sizeof(double)*numberOfElements));
 
 	// Copy Data from CPU to GPU
-	checkCudaErrors(cudaMemcpy(gpuLUDecompositionMatrix, cpuMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension, cudaMemcpyHostToDevice));
-	checkCudaErrors(cudaMemcpy(gpuInvertedMatrix, cpuInvertedMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension, cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(gpuLUDecompositionMatrix, cpuMatrix, sizeof(double)*numberOfElements, cudaMemcpyHostToDevice));
+	checkCudaErrors(cudaMemcpy(gpuInvertedMatrix, cpuInvertedMatrix, sizeof(double)*numberOfElements, cudaMemcpyHostToDevice));
 
 	// Initialize More Variables
 	double **gpuInvertedMatrixArrayOfPointers = NULL;
@@ -1028,19 +885,16 @@ float GetCuSparseInvertedMatrixGPU(double *cpuInvertedMatrix,
 	double *cpuLUDecompositionMatrixArray[] = { gpuLUDecompositionMatrix };
 
 	// Create Handle
-	checkCudaErrors(cublasCreate_v2(&handle));
+	cublasCreate_v2(&handle);
 
 	// Allocate Memory to device arrays
-	checkCudaErrors(cudaMalloc((void **)&gpuInvertedMatrixArrayOfPointers, sizeof(cpuInvertedMatrixArray)));
-	checkCudaErrors(cudaMalloc((void **)&gpuLUDecompositionMatrixArrayOfPointers, sizeof(cpuLUDecompositionMatrixArray)));
+	checkCudaErrors(cudaMalloc<double*>(&gpuInvertedMatrixArrayOfPointers, sizeof(cpuInvertedMatrixArray)));
+	checkCudaErrors(cudaMalloc<double*>(&gpuLUDecompositionMatrixArrayOfPointers, sizeof(cpuLUDecompositionMatrixArray)));
 
 	// Copy Data from CPU to GPU
 	checkCudaErrors(cudaMemcpy(gpuInvertedMatrixArrayOfPointers, cpuInvertedMatrixArray, sizeof(cpuInvertedMatrixArray), cudaMemcpyHostToDevice));
 	checkCudaErrors(cudaMemcpy(gpuLUDecompositionMatrixArrayOfPointers, cpuLUDecompositionMatrixArray, sizeof(cpuLUDecompositionMatrixArray), cudaMemcpyHostToDevice));
-
-	// Keep Track of Start Time
-	start = get_time();
-
+	
 	// Create Buffer
 	checkCudaErrors(cudaMalloc((void **)&info, sizeof(int)));
 
@@ -1048,23 +902,15 @@ float GetCuSparseInvertedMatrixGPU(double *cpuInvertedMatrix,
 	checkCudaErrors(cudaMemset(info, 0, sizeof(int)));
 
 	// Perform LU Decomposition
-	checkCudaErrors(cublasDgetrfBatched(handle, squareMatrixDimension, gpuLUDecompositionMatrixArrayOfPointers, squareMatrixDimension, gpuPivotMatrix, info, batch));
+	cublasStatus_t luDecompResult = cublasDgetrfBatched(handle, squareMatrixDimension, gpuLUDecompositionMatrixArrayOfPointers, squareMatrixDimension, gpuPivotMatrix, info, batchSize);
 
 	// Compute Matrix Inverse
-	checkCudaErrors(cublasDgetriBatched(handle, squareMatrixDimension, (const double **)gpuLUDecompositionMatrixArrayOfPointers, squareMatrixDimension, gpuPivotMatrix, gpuInvertedMatrixArrayOfPointers, squareMatrixDimension, info, batch));
-	checkCudaErrors(cudaDeviceSynchronize());
+	cublasStatus_t invertResult = cublasDgetriBatched(handle, squareMatrixDimension, (const double **)gpuLUDecompositionMatrixArrayOfPointers, squareMatrixDimension, gpuPivotMatrix, gpuInvertedMatrixArrayOfPointers, squareMatrixDimension, info, batchSize);
+	cudaDeviceSynchronize();
 
 	// Copy results from GPU Memory to Host Memory
-	checkCudaErrors(cudaMemcpy(cpuInvertedMatrix, gpuInvertedMatrix, sizeof(double)*squareMatrixDimension*squareMatrixDimension, cudaMemcpyDeviceToHost));
-
-	// Keep Track of Stop Time 
-	stop = get_time();
-
-	// Synchronize Events
-	timeToCompleteInMs = 0;
-	checkCudaErrors(cudaEventSynchronize(stop));
-	checkCudaErrors(cudaEventElapsedTime(&timeToCompleteInMs, start, stop));
-
+	checkCudaErrors(cudaMemcpy(cpuInvertedMatrix, gpuInvertedMatrix, sizeof(double)*numberOfElements, cudaMemcpyDeviceToHost));
+	
 	// Free up allocated memory
 	if (handle) { checkCudaErrors(cublasDestroy_v2(handle)); }
 	if (gpuPivotMatrix) { checkCudaErrors(cudaFree(gpuPivotMatrix)); }
@@ -1072,22 +918,27 @@ float GetCuSparseInvertedMatrixGPU(double *cpuInvertedMatrix,
 	if (gpuInvertedMatrixArrayOfPointers) { checkCudaErrors(cudaFree(gpuInvertedMatrixArrayOfPointers)); }
 	if (gpuLUDecompositionMatrixArrayOfPointers) { checkCudaErrors(cudaFree(gpuLUDecompositionMatrixArrayOfPointers)); }
 
-	// return time required to complete matrix inversion
+	// Keep Track of Stop Time 
+	QueryPerformanceCounter(&stopTime);
+
+	// Get Total Time to Complete
+	timeToCompleteInMs = (float)((stopTime.QuadPart - startTime.QuadPart) * 1000.0 / frequency.QuadPart);
+
+	// Return time required to complete
 	return timeToCompleteInMs;
 }
-
 
 double ComputeMagnitudeOfMatrix(const double *cpuInvertedMatrix, const int numberOfElements)
 {
 	// Initialize Variables
 	double magnitudeOfMatrix = 0.0;
-	thrust::device_vector<double> cpuMatrix(cpuInvertedMatrix, cpuInvertedMatrix + numberOfElements);
-
+	thrust::host_vector<double> cpuInputMatrix(cpuInvertedMatrix, cpuInvertedMatrix + numberOfElements);
+	
 	// Square all matrix values using Thrust transform function
-	thrust::transform(cpuMatrix.begin(), cpuMatrix.end(), cpuMatrix.begin(), cpuMatrix.begin(), thrust::multiplies<double>());
+	thrust::transform(cpuInputMatrix.begin(), cpuInputMatrix.end(), cpuInputMatrix.begin(), cpuInputMatrix.begin(), thrust::multiplies<double>());
 
 	// Sum the transformed matrix of squared values using Thrust reduce function
-	magnitudeOfMatrix = std::sqrt(thrust::reduce(cpuMatrix.begin(), cpuMatrix.end(), (double) 0.0, thrust::plus<double>()));
+	magnitudeOfMatrix = std::sqrt(thrust::reduce(cpuInputMatrix.begin(), cpuInputMatrix.end(), (double) 0.0, thrust::plus<double>()));
 
 	// return computed magnitude
 	return magnitudeOfMatrix;

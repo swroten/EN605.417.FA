@@ -25,9 +25,13 @@ public:
 	int* GetPivotMatrixElementsPointer() const;
 	int GetNumberOfElements() const;
 	int GetSquareMatrixDimension() const;
+	double GetMagnitudeOfInvertedMatrixElements() const;
+	double GetMagnitudeOfLUDecompositionMatrixElements() const;
 	void PrintGPUProperties() const;
 	std::string ToString() const;
 private:
+	double luMatrixMagnitude{ 0 };
+	double inverseMatrixMagnitude{ 0 };
 	std::string luMatrixAsString{ "" };
 	std::string invertedMatrixAsString{ "" };
 	std::string GetMatrixAsString(double *matrixElementsPntr, int squareMatrixDimension) const;

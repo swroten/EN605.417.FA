@@ -41,4 +41,7 @@
       <Filter>CUDA Files</Filter>
     </CudaCompile>
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="README.txt" />
+  </ItemGroup>
 </Project>

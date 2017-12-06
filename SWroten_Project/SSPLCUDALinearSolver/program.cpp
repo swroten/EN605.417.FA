@@ -68,17 +68,14 @@ std::tuple<double, double> MatrixInversionPerformanceComparisonCublasVsCPU(int d
 	return std::make_tuple(matrix.GetCPUTimeToInvertInMs(), matrix.GetGPUTimeToInvertInMs());
 }
 
-void main(int argc, char *argv[])
+void RunTestsForSpecifiedTestCases(const int numberOfTrials, const std::vector<int> testCases)
 {
 	// Initialize Variables
-	std::string userInput{ "" };
-	const int numberOfTrials = 10;
 	std::vector<double> cpuTimesForThisTestCase;
 	std::vector<double> gpuTimesForThisTestCase;
 	std::vector<std::vector<double>> cpuTimesPerTestCase;
 	std::vector<std::vector<double>> gpuTimesPerTestCase;
 	std::tuple<double, double> resultingTimeFromInMsWithFirstIndexCPUAndSecondIndexGPU;
-	const std::vector<int> testCases = { 5, 10, 25, 50, 100, 250, 500, 750, 1000 };
 
 	// Perform Test for each test case
 	for (int i = 0; i < testCases.size(); i++)
@@ -165,6 +162,17 @@ void main(int argc, char *argv[])
 		// Add End Line
 		std::cout << endl;
 	}
+}
+
+void main(int argc, char *argv[])
+{
+	// Initialize Variables
+	std::string userInput{ "" };
+	const int numberOfTrials = 10;
+	const std::vector<int> testCases = { 5, 10, 25, 50, 100, 250, 500, 750, 1000 };
+
+	// Run Test Cases
+	RunTestsForSpecifiedTestCases(numberOfTrials, testCases);	
 		
 	// Wait for user to close application
 	std::cout << "Press Any Button to Exit..." << endl;
